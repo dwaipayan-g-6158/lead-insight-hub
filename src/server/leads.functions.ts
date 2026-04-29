@@ -26,23 +26,26 @@ export const uploadDossier = createServerFn({ method: "POST" })
       });
     if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
 
+    const { signals: _signals, ...parsedFields } = parsed;
     const row = {
       uploaded_by: userId,
       storage_path: storagePath,
       filename: data.filename,
-      ...parsed,
-      signals: undefined,
+      ...parsedFields,
     };
-    delete (row as { signals?: unknown }).signals;
 
     // Upsert lead by (lead_name, company, report_date)
-    const { data: existing } = await supabase
+    let existingQuery = supabase
       .from("leads")
       .select("id, storage_path")
-      .eq("lead_name", parsed.lead_name)
-      .eq("company", parsed.company ?? "")
-      .eq("report_date", parsed.report_date)
-      .maybeSingle();
+      .eq("lead_name", parsed.lead_name);
+    existingQuery = parsed.company
+      ? existingQuery.eq("company", parsed.company)
+      : existingQuery.is("company", null);
+    existingQuery = parsed.report_date
+      ? existingQuery.eq("report_date", parsed.report_date)
+      : existingQuery.is("report_date", null);
+    const { data: existing } = await existingQuery.maybeSingle();
 
     let leadId: string;
     if (existing) {

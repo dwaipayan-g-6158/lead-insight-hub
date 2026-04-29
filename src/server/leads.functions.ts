@@ -109,7 +109,13 @@ export const getLead = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: lead, error } = await supabase.from("leads").select("*").eq("id", data.id).single();
+    const { data: lead, error } = await supabase
+      .from("leads")
+      .select(
+        "id, uploaded_by, storage_path, filename, lead_name, lead_title, company, email, report_date, eliss_version, composite_score, tier, confidence, icp_rating, icp_reason, fit_score, fit_max, fit_conf, intent_score, intent_max, intent_conf, timing_score, timing_max, timing_conf, budget_score, budget_max, budget_conf, verdict_headline, verdict_insight, verdict_next, executive_brief, created_at, updated_at"
+      )
+      .eq("id", data.id)
+      .single();
     if (error) throw new Error(error.message);
     const { data: signals } = await supabase
       .from("lead_signals")

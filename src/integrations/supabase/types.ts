@@ -14,7 +14,155 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      lead_signals: {
+        Row: {
+          created_at: string
+          detail: string | null
+          id: string
+          label: string
+          lead_id: string
+          points: number | null
+          signal_type: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          label: string
+          lead_id: string
+          points?: number | null
+          signal_type: string
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          label?: string
+          lead_id?: string
+          points?: number | null
+          signal_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_signals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          budget_conf: string | null
+          budget_max: number | null
+          budget_score: number | null
+          company: string | null
+          composite_score: number | null
+          confidence: string | null
+          created_at: string
+          eliss_version: string | null
+          email: string | null
+          executive_brief: string | null
+          filename: string
+          fit_conf: string | null
+          fit_max: number | null
+          fit_score: number | null
+          icp_rating: string | null
+          icp_reason: string | null
+          id: string
+          intent_conf: string | null
+          intent_max: number | null
+          intent_score: number | null
+          lead_name: string
+          lead_title: string | null
+          report_date: string | null
+          search_tsv: unknown
+          storage_path: string
+          tier: string | null
+          timing_conf: string | null
+          timing_max: number | null
+          timing_score: number | null
+          updated_at: string
+          uploaded_by: string | null
+          verdict_headline: string | null
+          verdict_insight: string | null
+          verdict_next: string | null
+        }
+        Insert: {
+          budget_conf?: string | null
+          budget_max?: number | null
+          budget_score?: number | null
+          company?: string | null
+          composite_score?: number | null
+          confidence?: string | null
+          created_at?: string
+          eliss_version?: string | null
+          email?: string | null
+          executive_brief?: string | null
+          filename: string
+          fit_conf?: string | null
+          fit_max?: number | null
+          fit_score?: number | null
+          icp_rating?: string | null
+          icp_reason?: string | null
+          id?: string
+          intent_conf?: string | null
+          intent_max?: number | null
+          intent_score?: number | null
+          lead_name: string
+          lead_title?: string | null
+          report_date?: string | null
+          search_tsv?: unknown
+          storage_path: string
+          tier?: string | null
+          timing_conf?: string | null
+          timing_max?: number | null
+          timing_score?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+          verdict_headline?: string | null
+          verdict_insight?: string | null
+          verdict_next?: string | null
+        }
+        Update: {
+          budget_conf?: string | null
+          budget_max?: number | null
+          budget_score?: number | null
+          company?: string | null
+          composite_score?: number | null
+          confidence?: string | null
+          created_at?: string
+          eliss_version?: string | null
+          email?: string | null
+          executive_brief?: string | null
+          filename?: string
+          fit_conf?: string | null
+          fit_max?: number | null
+          fit_score?: number | null
+          icp_rating?: string | null
+          icp_reason?: string | null
+          id?: string
+          intent_conf?: string | null
+          intent_max?: number | null
+          intent_score?: number | null
+          lead_name?: string
+          lead_title?: string | null
+          report_date?: string | null
+          search_tsv?: unknown
+          storage_path?: string
+          tier?: string | null
+          timing_conf?: string | null
+          timing_max?: number | null
+          timing_score?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+          verdict_headline?: string | null
+          verdict_insight?: string | null
+          verdict_next?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

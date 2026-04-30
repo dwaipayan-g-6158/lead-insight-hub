@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
-import { DashboardPage } from "@/components/DashboardPage";
+import { UploadPage } from "@/components/UploadPage";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/upload")({
   component: () => (
     <AuthGate>
       <AppShell>
-        <DashboardPage />
+        <UploadPage />
       </AppShell>
     </AuthGate>
   ),

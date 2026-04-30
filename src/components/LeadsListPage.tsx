@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { listLeads } from "@/server/leads.functions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Upload } from "lucide-react";
+import { Loader2, Search, Upload, X } from "lucide-react";
 import { tierClasses } from "@/lib/tier";
 
 type Row = {
@@ -22,22 +22,54 @@ type Row = {
 
 export function LeadsListPage() {
   const fn = useServerFn(listLeads);
-  const [search, setSearch] = useState("");
-  const [tier, setTier] = useState<"" | "HOT" | "WARM" | "COLD">("");
+  const sp = useSearch({ from: "/leads/" });
+  const navigate = useNavigate({ from: "/leads/" });
+  const [search, setSearch] = useState(sp.q ?? "");
+  const tier = sp.tier ?? "";
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // keep input in sync if URL changes externally
+  useEffect(() => { setSearch(sp.q ?? ""); }, [sp.q]);
 
   useEffect(() => {
     setLoading(true);
     const t = setTimeout(() => {
-      fn({ data: { search: search || undefined, tier: tier || undefined } })
+      fn({
+        data: {
+          search: search || undefined,
+          tier: tier || undefined,
+          company: sp.company,
+          min_score: sp.min,
+          max_score: sp.max,
+          signal_label: sp.signal,
+          signal_type: sp.signal_type,
+        },
+      })
         .then((r) => setRows((r as { leads: Row[] }).leads))
         .finally(() => setLoading(false));
     }, 200);
     return () => clearTimeout(t);
-  }, [fn, search, tier]);
+  }, [fn, search, tier, sp.company, sp.min, sp.max, sp.signal, sp.signal_type]);
 
   const tiers = useMemo(() => ["", "HOT", "WARM", "COLD"] as const, []);
+
+  const setTier = (t: "" | "HOT" | "WARM" | "COLD") => {
+    navigate({ search: (prev) => ({ ...prev, tier: t || undefined }), replace: true });
+  };
+  const clearFilter = (key: "company" | "min" | "max" | "signal" | "signal_type") => {
+    navigate({ search: (prev) => ({ ...prev, [key]: undefined }), replace: true });
+  };
+  const clearAll = () => {
+    setSearch("");
+    navigate({ search: {}, replace: true });
+  };
+
+  const activeFilters: { key: "company" | "min" | "max" | "signal" | "signal_type"; label: string }[] = [];
+  if (sp.company) activeFilters.push({ key: "company", label: `Company: ${sp.company}` });
+  if (sp.min != null) activeFilters.push({ key: "min", label: `Score ≥ ${sp.min}` });
+  if (sp.max != null) activeFilters.push({ key: "max", label: `Score ≤ ${sp.max}` });
+  if (sp.signal) activeFilters.push({ key: "signal", label: `Signal: ${sp.signal}` });
 
   return (
     <div className="space-y-5">
@@ -74,6 +106,23 @@ export function LeadsListPage() {
             ))}
           </div>
         </div>
+        {activeFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {activeFilters.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => clearFilter(f.key)}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20"
+              >
+                {f.label}
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+            <button onClick={clearAll} className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline ml-1">
+              Clear all
+            </button>
+          </div>
+        )}
       </Card>
 
       <Card className="p-0 overflow-hidden">

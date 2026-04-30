@@ -80,10 +80,26 @@ export const listLeads = createServerFn({ method: "POST" })
       search: z.string().max(200).optional(),
       tier: z.enum(["HOT", "WARM", "COLD"]).optional(),
       company: z.string().max(200).optional(),
+      min_score: z.number().int().min(0).max(100).optional(),
+      max_score: z.number().int().min(0).max(100).optional(),
+      signal_label: z.string().max(200).optional(),
+      signal_type: z.string().max(64).optional(),
     }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+
+    // Optional pre-filter via signals join
+    let signalLeadIds: string[] | null = null;
+    if (data.signal_label) {
+      let sq = supabase.from("lead_signals").select("lead_id").eq("label", data.signal_label);
+      if (data.signal_type) sq = sq.eq("signal_type", data.signal_type);
+      const { data: sigRows, error: sErr } = await sq.limit(2000);
+      if (sErr) throw new Error(sErr.message);
+      signalLeadIds = Array.from(new Set((sigRows ?? []).map((r) => r.lead_id)));
+      if (signalLeadIds.length === 0) return { leads: [] };
+    }
+
     let q = supabase
       .from("leads")
       .select("id, lead_name, lead_title, company, email, composite_score, tier, report_date, created_at")
@@ -92,6 +108,9 @@ export const listLeads = createServerFn({ method: "POST" })
 
     if (data.tier) q = q.eq("tier", data.tier);
     if (data.company) q = q.eq("company", data.company);
+    if (data.min_score != null) q = q.gte("composite_score", data.min_score);
+    if (data.max_score != null) q = q.lte("composite_score", data.max_score);
+    if (signalLeadIds) q = q.in("id", signalLeadIds);
     if (data.search && data.search.trim()) {
       const term = data.search.trim();
       q = q.or(

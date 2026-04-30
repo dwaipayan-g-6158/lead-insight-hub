@@ -3,7 +3,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
 import { LeadsListPage } from "@/components/LeadsListPage";
 
-export const Route = createFileRoute("/leads")({
+export const Route = createFileRoute("/leads/")({
   component: () => (
     <AuthGate>
       <AppShell>

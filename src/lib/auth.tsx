@@ -13,12 +13,47 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+// Install a one-time global fetch interceptor that attaches the current
+// Supabase access token to TanStack server function calls. Without this,
+// `requireSupabaseAuth` middleware rejects every server fn call with 401.
+let fetchPatched = false;
+function patchFetchOnce() {
+  if (fetchPatched || typeof window === "undefined") return;
+  fetchPatched = true;
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    try {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+          ? input.toString()
+          : input.url;
+      if (url && url.includes("/_serverFn/")) {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) {
+          const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+          if (!headers.has("authorization")) {
+            headers.set("authorization", `Bearer ${token}`);
+          }
+          return origFetch(input, { ...init, headers });
+        }
+      }
+    } catch {
+      // fall through to original fetch
+    }
+    return origFetch(input, init);
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    patchFetchOnce();
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);

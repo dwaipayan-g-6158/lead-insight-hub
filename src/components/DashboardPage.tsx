@@ -30,7 +30,10 @@ export function DashboardPage() {
   useEffect(() => {
     Promise.all([
       statsFn().then((d) => setData(d as { leads: StatsLead[]; signals: StatsSignal[] })),
-      leadsFn({ data: {} }).then((r) => setHotLeads((r as { leads: HotLead[] }).leads.slice(0, 6))),
+      leadsFn({ data: {} }).then((r) => {
+        const result = r as { leads?: HotLead[] } | undefined;
+        setHotLeads((result?.leads ?? []).slice(0, 6));
+      }),
     ]).finally(() => setLoading(false));
   }, [statsFn, leadsFn]);
 

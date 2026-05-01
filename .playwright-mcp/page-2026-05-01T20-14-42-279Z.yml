@@ -1,0 +1,15 @@
+- generic [ref=e6]:
+  - generic [ref=e7]:
+    - img "ELISS Logo" [ref=e8]
+    - generic [ref=e9]: ELISS
+    - heading "Lead Intelligence Hub" [level=1] [ref=e10]
+    - paragraph [ref=e11]: Create your team account
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - text: Email
+      - textbox "Email" [ref=e14]
+    - generic [ref=e15]:
+      - text: Password
+      - textbox "Password" [ref=e16]
+    - button "Create account" [ref=e19]
+  - button "Already have an account? Sign in" [active] [ref=e20]

@@ -1,7 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { AuthGate } from "@/components/AuthGate";
-import { AppShell } from "@/components/AppShell";
 import { AdminPage } from "@/components/AdminPage";
 import { useAuth } from "@/lib/auth";
 import { Loader2, ShieldAlert } from "lucide-react";
@@ -41,11 +39,5 @@ function AdminGuard() {
 }
 
 export const Route = createFileRoute("/admin")({
-  component: () => (
-    <AuthGate>
-      <AppShell>
-        <AdminGuard />
-      </AppShell>
-    </AuthGate>
-  ),
+  component: AdminGuard,
 });

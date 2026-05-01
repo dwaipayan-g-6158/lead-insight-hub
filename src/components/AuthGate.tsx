@@ -41,7 +41,8 @@ function LoginScreen() {
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <Card className="w-full max-w-sm p-6">
-        <div className="mb-5">
+        <div className="mb-5 flex flex-col items-center text-center">
+          <img src="/logo.svg" alt="ELISS Logo" className="h-12 w-auto mb-3" />
           <div className="text-xs uppercase tracking-[0.2em] text-primary">ELISS</div>
           <h1 className="text-xl font-semibold mt-1">Lead Intelligence Hub</h1>
           <p className="text-sm text-muted-foreground mt-1">

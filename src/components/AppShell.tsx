@@ -24,14 +24,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border bg-card/40 backdrop-blur sticky top-0 z-10">
         <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2">
             <img src="/logo.svg" alt="ELISS" className="h-8 w-8" />
             <div className="leading-tight">
               <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">ELISS</div>
-              <div className="text-sm font-semibold -mt-0.5">Intel Hub</div>
+              <div className="text-xs font-semibold -mt-0.5 leading-tight">Enterprise Lead Intelligence<br/>& Scoring System</div>
             </div>
           </Link>
           <nav className="flex items-center gap-1">
@@ -50,7 +50,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6 flex-1 w-full">{children}</main>
+      <footer className="border-t border-border bg-card/40 mt-auto py-4">
+        <div className="mx-auto max-w-7xl px-4 flex items-center justify-between text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} ManageEngine. All rights reserved.</span>
+          <span className="text-[10px] uppercase tracking-wider">Confidential & Proprietary</span>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -23,11 +23,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [roleLoading, setRoleLoading] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   const fetchRole = async (currentUser: User | null) => {
     if (!currentUser) {
       setIsAdmin(false);
+      setRoleLoading(false);
       return;
     }
     setRoleLoading(true);

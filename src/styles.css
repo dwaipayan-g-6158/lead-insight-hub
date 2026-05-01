@@ -166,3 +166,7 @@
     scrollbar-color: hsl(215 20% 65% / 0.4) transparent;
   }
 }
+
+html {
+  overflow-y: scroll;
+}

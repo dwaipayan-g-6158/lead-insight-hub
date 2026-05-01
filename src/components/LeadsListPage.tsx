@@ -116,7 +116,7 @@ export function LeadsListPage() {
 
       <Card className="p-0 overflow-hidden">
         {loading ? (
-          <div className="grid place-items-center py-16 text-muted-foreground">
+          <div className="grid place-items-center py-16 min-h-[60vh] text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : rows.length === 0 ? (

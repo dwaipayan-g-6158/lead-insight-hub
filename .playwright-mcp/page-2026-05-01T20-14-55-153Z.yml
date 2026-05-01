@@ -1,0 +1,293 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e21]:
+    - banner [ref=e22]:
+      - generic [ref=e23]:
+        - link "ELISS ELISS Intel Hub" [ref=e24] [cursor=pointer]:
+          - /url: /
+          - img "ELISS" [ref=e25]
+          - generic [ref=e26]:
+            - generic [ref=e27]: ELISS
+            - generic [ref=e28]: Intel Hub
+        - navigation [ref=e29]:
+          - link "Dashboard" [ref=e30] [cursor=pointer]:
+            - /url: /
+            - img [ref=e31]
+            - text: Dashboard
+          - link "Leads" [ref=e36] [cursor=pointer]:
+            - /url: /leads
+            - img [ref=e37]
+            - text: Leads
+          - link "Upload" [ref=e42] [cursor=pointer]:
+            - /url: /upload
+            - img [ref=e43]
+            - text: Upload
+        - generic [ref=e46]:
+          - generic [ref=e47]: testuser@example.com
+          - button "Sign out" [ref=e48]:
+            - img
+            - text: Sign out
+    - main [ref=e49]:
+      - generic [ref=e50]:
+        - generic [ref=e52]:
+          - generic [ref=e53]:
+            - generic [ref=e54]: Intel Hub
+            - heading "Collective Lead Intelligence" [level=1] [ref=e55]
+            - paragraph [ref=e56]: 3 dossiers · 3 hot · avg score 82
+          - generic [ref=e57]:
+            - link "Upload" [ref=e58] [cursor=pointer]:
+              - /url: /upload
+              - button "Upload" [ref=e59]:
+                - img
+                - text: Upload
+            - link "Browse leads" [ref=e60] [cursor=pointer]:
+              - /url: /leads
+              - button "Browse leads" [ref=e61]:
+                - img
+                - text: Browse leads
+        - generic [ref=e62]:
+          - link "Total dossiers 3" [ref=e63] [cursor=pointer]:
+            - /url: /leads
+            - generic [ref=e64]:
+              - generic [ref=e65]:
+                - img [ref=e66]
+                - text: Total dossiers
+              - generic [ref=e72]: "3"
+              - img [ref=e73]
+          - link "Hot leads 3 100%" [ref=e76] [cursor=pointer]:
+            - /url: /leads?tier=HOT
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - img [ref=e79]
+                - text: Hot leads
+              - generic [ref=e81]:
+                - generic [ref=e82]: "3"
+                - generic [ref=e83]: 100%
+              - img [ref=e84]
+          - link "Warm leads 0" [ref=e87] [cursor=pointer]:
+            - /url: /leads?tier=WARM
+            - generic [ref=e88]:
+              - generic [ref=e89]:
+                - img [ref=e90]
+                - text: Warm leads
+              - generic [ref=e93]: "0"
+              - img [ref=e94]
+          - link "Cold leads 0" [ref=e97] [cursor=pointer]:
+            - /url: /leads?tier=COLD
+            - generic [ref=e98]:
+              - generic [ref=e99]:
+                - img [ref=e100]
+                - text: Cold leads
+              - generic [ref=e114]: "0"
+              - img [ref=e115]
+        - generic [ref=e118]:
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - generic [ref=e122]: Top opportunities
+                - generic [ref=e123]: Highest-scoring dossiers right now
+              - link "View all hot" [ref=e124] [cursor=pointer]:
+                - /url: /leads?tier=HOT
+                - text: View all hot
+                - img [ref=e125]
+            - list [ref=e127]:
+              - listitem [ref=e128]:
+                - link "84 Gabriel Colon-Atencio Assistant Director, Enterprise Solutions · City of Coppell HOT" [ref=e129] [cursor=pointer]:
+                  - /url: /leads/2072866f-c7b4-4f46-9880-85a0684e69a4
+                  - generic [ref=e130]: "84"
+                  - generic [ref=e131]:
+                    - generic [ref=e132]: Gabriel Colon-Atencio
+                    - generic [ref=e133]: Assistant Director, Enterprise Solutions · City of Coppell
+                  - generic [ref=e134]: HOT
+                  - img [ref=e135]
+              - listitem [ref=e137]:
+                - link "81 Perry Amo-Mensah IT Systems Manager · City of Burlington, North Carolina HOT" [ref=e138] [cursor=pointer]:
+                  - /url: /leads/78aedd23-ba83-4f8b-98fb-446e58040635
+                  - generic [ref=e139]: "81"
+                  - generic [ref=e140]:
+                    - generic [ref=e141]: Perry Amo-Mensah
+                    - generic [ref=e142]: IT Systems Manager · City of Burlington, North Carolina
+                  - generic [ref=e143]: HOT
+                  - img [ref=e144]
+              - listitem [ref=e146]:
+                - link "81 Dylan Horner Unknown — likely IC / property-level / junior corporate (not surfaced in public web) · Remington Hospitality (Remington Hotels) HOT" [ref=e147] [cursor=pointer]:
+                  - /url: /leads/63143e27-54ec-4238-b4c9-ea6a0617cbaa
+                  - generic [ref=e148]: "81"
+                  - generic [ref=e149]:
+                    - generic [ref=e150]: Dylan Horner
+                    - generic [ref=e151]: Unknown — likely IC / property-level / junior corporate (not surfaced in public web) · Remington Hospitality (Remington Hotels)
+                  - generic [ref=e152]: HOT
+                  - img [ref=e153]
+          - generic [ref=e155]:
+            - generic [ref=e156]: Tier distribution
+            - generic [ref=e157]:
+              - application [ref=e160]
+              - generic:
+                - generic:
+                  - generic: "3"
+                  - generic: dossiers
+            - generic [ref=e167]:
+              - link "HOT 3" [ref=e168] [cursor=pointer]:
+                - /url: /leads?tier=HOT
+                - generic [ref=e169]:
+                  - generic [ref=e170]: HOT
+                  - img [ref=e171]
+                - generic [ref=e174]: "3"
+              - link "WARM 0" [ref=e175] [cursor=pointer]:
+                - /url: /leads?tier=WARM
+                - generic [ref=e176]:
+                  - generic [ref=e177]: WARM
+                  - img [ref=e178]
+                - generic [ref=e181]: "0"
+              - link "COLD 0" [ref=e182] [cursor=pointer]:
+                - /url: /leads?tier=COLD
+                - generic [ref=e183]:
+                  - generic [ref=e184]: COLD
+                  - img [ref=e185]
+                - generic [ref=e188]: "0"
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - generic [ref=e191]: Score distribution
+              - generic [ref=e192]: Click any band to filter leads
+            - generic [ref=e193]:
+              - link "0 0-19" [ref=e194] [cursor=pointer]:
+                - /url: /leads?min=0&max=19
+                - generic [ref=e195]: "0"
+                - generic [ref=e197]: 0-19
+              - link "0 20-39" [ref=e198] [cursor=pointer]:
+                - /url: /leads?min=20&max=39
+                - generic [ref=e199]: "0"
+                - generic [ref=e201]: 20-39
+              - link "0 40-59" [ref=e202] [cursor=pointer]:
+                - /url: /leads?min=40&max=59
+                - generic [ref=e203]: "0"
+                - generic [ref=e205]: 40-59
+              - link "0 60-79" [ref=e206] [cursor=pointer]:
+                - /url: /leads?min=60&max=79
+                - generic [ref=e207]: "0"
+                - generic [ref=e209]: 60-79
+              - link "3 80-100" [ref=e210] [cursor=pointer]:
+                - /url: /leads?min=80&max=100
+                - generic [ref=e211]: "3"
+                - generic [ref=e213]: 80-100
+          - generic [ref=e214]:
+            - generic [ref=e215]: Dimension averages
+            - generic [ref=e216]:
+              - generic [ref=e218]:
+                - generic [ref=e219]: Fit
+                - generic [ref=e220]: 83%
+              - generic [ref=e224]:
+                - generic [ref=e225]: Intent
+                - generic [ref=e226]: 96%
+              - generic [ref=e230]:
+                - generic [ref=e231]: Timing
+                - generic [ref=e232]: 80%
+              - generic [ref=e236]:
+                - generic [ref=e237]: Budget
+                - generic [ref=e238]: 67%
+          - generic [ref=e241]:
+            - generic [ref=e243]:
+              - generic [ref=e244]:
+                - img [ref=e245]
+                - text: Activity over time
+              - generic [ref=e247]: New dossiers per week and rolling avg score
+            - application [ref=e250]:
+              - generic [ref=e256]:
+                - generic [ref=e259]: 04-27
+                - generic [ref=e260]:
+                  - generic [ref=e262]: "0"
+                  - generic [ref=e264]: "25"
+                  - generic [ref=e266]: "50"
+                  - generic [ref=e268]: "75"
+                  - generic [ref=e270]: "100"
+          - generic [ref=e271]:
+            - generic [ref=e273]:
+              - img [ref=e274]
+              - text: Pipeline by company
+            - list [ref=e278]:
+              - listitem [ref=e279]:
+                - link "City of Coppell 1 lead 84" [ref=e280] [cursor=pointer]:
+                  - /url: /leads?company=City+of+Coppell
+                  - generic [ref=e281]:
+                    - generic [ref=e282]: City of Coppell
+                    - generic [ref=e283]:
+                      - generic [ref=e284]: 1 lead
+                      - generic [ref=e285]: "84"
+                      - img [ref=e286]
+              - listitem [ref=e290]:
+                - link "City of Burlington, North Carolina 1 lead 81" [ref=e291] [cursor=pointer]:
+                  - /url: /leads?company=City+of+Burlington%2C+North+Carolina
+                  - generic [ref=e292]:
+                    - generic [ref=e293]: City of Burlington, North Carolina
+                    - generic [ref=e294]:
+                      - generic [ref=e295]: 1 lead
+                      - generic [ref=e296]: "81"
+                      - img [ref=e297]
+              - listitem [ref=e301]:
+                - link "Remington Hospitality (Remington Hotels) 1 lead 81" [ref=e302] [cursor=pointer]:
+                  - /url: /leads?company=Remington+Hospitality+%28Remington+Hotels%29
+                  - generic [ref=e303]:
+                    - generic [ref=e304]: Remington Hospitality (Remington Hotels)
+                    - generic [ref=e305]:
+                      - generic [ref=e306]: 1 lead
+                      - generic [ref=e307]: "81"
+                      - img [ref=e308]
+          - generic [ref=e312]:
+            - generic [ref=e313]:
+              - img [ref=e314]
+              - text: Top score drivers
+            - generic [ref=e317]:
+              - link "Compliance need 3 +10" [ref=e318] [cursor=pointer]:
+                - /url: /leads?signal=Compliance+need&signal_type=attribution
+                - generic [ref=e319]: Compliance need
+                - generic [ref=e320]: "3"
+                - generic [ref=e321]: "+10"
+              - link "AD pain 3 +8" [ref=e322] [cursor=pointer]:
+                - /url: /leads?signal=AD+pain&signal_type=attribution
+                - generic [ref=e323]: AD pain
+                - generic [ref=e324]: "3"
+                - generic [ref=e325]: "+8"
+              - link "Security hiring 3 +5" [ref=e326] [cursor=pointer]:
+                - /url: /leads?signal=Security+hiring&signal_type=attribution
+                - generic [ref=e327]: Security hiring
+                - generic [ref=e328]: "3"
+                - generic [ref=e329]: "+5"
+              - link "Security incident 2 +10" [ref=e330] [cursor=pointer]:
+                - /url: /leads?signal=Security+incident&signal_type=attribution
+                - generic [ref=e331]: Security incident
+                - generic [ref=e332]: "2"
+                - generic [ref=e333]: "+10"
+              - link "Tech investment 2 +5" [ref=e334] [cursor=pointer]:
+                - /url: /leads?signal=Tech+investment&signal_type=attribution
+                - generic [ref=e335]: Tech investment
+                - generic [ref=e336]: "2"
+                - generic [ref=e337]: "+5"
+          - generic [ref=e338]:
+            - generic [ref=e339]:
+              - img [ref=e340]
+              - text: Compliance frameworks
+            - generic [ref=e342]:
+              - link "CJIS 1" [ref=e343] [cursor=pointer]:
+                - /url: /leads?signal=CJIS&signal_type=compliance
+                - generic [ref=e344]: CJIS
+                - generic [ref=e345]: "1"
+              - link "NIST 1" [ref=e346] [cursor=pointer]:
+                - /url: /leads?signal=NIST&signal_type=compliance
+                - generic [ref=e347]: NIST
+                - generic [ref=e348]: "1"
+              - link "TX DIR 1" [ref=e349] [cursor=pointer]:
+                - /url: /leads?signal=TX+DIR&signal_type=compliance
+                - generic [ref=e350]: TX DIR
+                - generic [ref=e351]: "1"
+              - link "PCI-DSS 1" [ref=e352] [cursor=pointer]:
+                - /url: /leads?signal=PCI-DSS&signal_type=compliance
+                - generic [ref=e353]: PCI-DSS
+                - generic [ref=e354]: "1"
+          - generic [ref=e355]:
+            - generic [ref=e356]:
+              - img [ref=e357]
+              - text: Competitive threats
+            - link "Sentinel 1" [ref=e361] [cursor=pointer]:
+              - /url: /leads?signal=Sentinel&signal_type=competitor
+              - generic [ref=e362]: Sentinel
+              - generic [ref=e363]: "1"
+  - generic [ref=e364]: "0"

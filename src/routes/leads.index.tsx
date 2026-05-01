@@ -1,7 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { AuthGate } from "@/components/AuthGate";
-import { AppShell } from "@/components/AppShell";
 import { LeadsListPage } from "@/components/LeadsListPage";
 
 const searchSchema = z.object({
@@ -16,11 +14,5 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/leads/")({
   validateSearch: (input) => searchSchema.parse(input),
-  component: () => (
-    <AuthGate>
-      <AppShell>
-        <LeadsListPage />
-      </AppShell>
-    </AuthGate>
-  ),
+  component: LeadsListPage,
 });

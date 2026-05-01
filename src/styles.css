@@ -145,4 +145,24 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(215 20% 65% / 0.4);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(215 20% 65% / 0.6);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(215 20% 65% / 0.4) transparent;
+  }
 }

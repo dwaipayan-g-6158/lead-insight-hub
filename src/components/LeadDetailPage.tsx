@@ -2,26 +2,16 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getLead, deleteLead } from "@/server/leads.functions";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DimensionBar } from "@/components/DimensionBar";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { tierClasses } from "@/lib/tier";
-
-type LeadRow = {
-  id: string; lead_name: string; lead_title: string | null; company: string | null;
-  email: string | null; report_date: string | null; eliss_version: string | null;
-  composite_score: number | null; tier: string | null; confidence: string | null;
-  icp_rating: string | null; icp_reason: string | null;
-  fit_score: number | null; fit_max: number | null; fit_conf: string | null;
-  intent_score: number | null; intent_max: number | null; intent_conf: string | null;
-  timing_score: number | null; timing_max: number | null; timing_conf: string | null;
-  budget_score: number | null; budget_max: number | null; budget_conf: string | null;
-  verdict_headline: string | null; verdict_insight: string | null; verdict_next: string | null;
-  executive_brief: string | null;
-};
-type Signal = { id: string; signal_type: string; label: string; points: number | null; detail: string | null };
+import type { LeadRow, Signal } from "@/types/leads";
 
 export function LeadDetailPage({ id }: { id: string }) {
+  const { isAdmin } = useAuth();
   const get = useServerFn(getLead);
   const del = useServerFn(deleteLead);
   const [data, setData] = useState<{ lead: LeadRow; signals: Signal[]; html: string } | null>(null);
@@ -46,20 +36,6 @@ export function LeadDetailPage({ id }: { id: string }) {
   if (err || !data) return <Card className="p-6 text-sm text-destructive">{err || "Not found"}</Card>;
 
   const { lead, signals, html } = data;
-  const dim = (label: string, s: number | null, m: number | null) => {
-    const pct = s != null && m ? Math.round((s / m) * 100) : null;
-    return (
-      <div>
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="font-medium">{s ?? "—"}{m ? ` / ${m}` : ""}</span>
-        </div>
-        <div className="h-1.5 rounded bg-muted mt-1 overflow-hidden">
-          <div className="h-full bg-primary" style={{ width: `${pct ?? 0}%` }} />
-        </div>
-      </div>
-    );
-  };
 
   const groupedSignals = signals.reduce<Record<string, Signal[]>>((acc, s) => {
     (acc[s.signal_type] ||= []).push(s); return acc;
@@ -71,12 +47,14 @@ export function LeadDetailPage({ id }: { id: string }) {
         <Link to="/leads" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to leads
         </Link>
-        <Button variant="ghost" size="sm" onClick={onDelete}>
-          <Trash2 className="h-4 w-4 mr-2" /> Delete
-        </Button>
+        {isAdmin && (
+          <Button variant="ghost" size="sm" onClick={onDelete}>
+            <Trash2 className="h-4 w-4 mr-2" /> Delete
+          </Button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 flex-1 min-h-0">
         <aside className="space-y-4">
           <Card className="p-5">
             <div className="text-xs uppercase tracking-widest text-muted-foreground">Lead</div>
@@ -96,10 +74,10 @@ export function LeadDetailPage({ id }: { id: string }) {
 
           <Card className="p-5 space-y-3">
             <div className="text-xs uppercase tracking-widest text-muted-foreground">Dimensions</div>
-            {dim("Fit", lead.fit_score, lead.fit_max)}
-            {dim("Intent", lead.intent_score, lead.intent_max)}
-            {dim("Timing", lead.timing_score, lead.timing_max)}
-            {dim("Budget", lead.budget_score, lead.budget_max)}
+            <DimensionBar label="Fit" score={lead.fit_score} max={lead.fit_max} />
+            <DimensionBar label="Intent" score={lead.intent_score} max={lead.intent_max} />
+            <DimensionBar label="Timing" score={lead.timing_score} max={lead.timing_max} />
+            <DimensionBar label="Budget" score={lead.budget_score} max={lead.budget_max} />
           </Card>
 
           {(lead.verdict_headline || lead.verdict_insight || lead.verdict_next) && (
@@ -130,16 +108,22 @@ export function LeadDetailPage({ id }: { id: string }) {
           )}
         </aside>
 
-        <Card className="p-0 overflow-hidden">
-          <div className="px-4 py-2 border-b border-border text-xs text-muted-foreground flex items-center justify-between">
+        <Card className="p-0 overflow-hidden flex flex-col sticky top-4" style={{ height: 'calc(100vh - 5rem)' }}>
+          <div className="px-4 py-2 border-b border-border text-xs text-muted-foreground flex items-center justify-between shrink-0">
             <span>Original dossier</span>
             {lead.report_date && <span>{lead.report_date}</span>}
           </div>
           <iframe
             title="Dossier"
-            srcDoc={html}
+            srcDoc={html?.replace('</head>', `<style>
+              ::-webkit-scrollbar { width: 8px; height: 8px; }
+              ::-webkit-scrollbar-track { background: transparent; }
+              ::-webkit-scrollbar-thumb { background: hsl(215 20% 65% / 0.4); border-radius: 9999px; }
+              ::-webkit-scrollbar-thumb:hover { background: hsl(215 20% 65% / 0.6); }
+              html { scrollbar-width: thin; scrollbar-color: hsl(215 20% 65% / 0.4) transparent; }
+            </style></head>`)}
             sandbox="allow-same-origin allow-scripts"
-            className="w-full h-[80vh] bg-white"
+            className="w-full flex-1 bg-white"
           />
         </Card>
       </div>

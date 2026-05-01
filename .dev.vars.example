@@ -1,0 +1,7 @@
+# Cloudflare Worker / Wrangler local dev secrets.
+# This file is gitignored (.dev.vars is in .gitignore).
+# Used by `wrangler dev` to inject into process.env at runtime.
+
+SUPABASE_URL=https://kjtejheookvzeormmmut.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-anon-public-key-here
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here

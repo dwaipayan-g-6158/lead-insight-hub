@@ -14,18 +14,7 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis, PieChart, Pie, Cell,
 } from "recharts";
 import { tierClasses, tierColor } from "@/lib/tier";
-
-type StatsLead = {
-  id: string;
-  composite_score: number | null;
-  tier: string | null;
-  company: string | null;
-  fit_score: number | null; intent_score: number | null; timing_score: number | null; budget_score: number | null;
-  fit_max: number | null; intent_max: number | null; timing_max: number | null; budget_max: number | null;
-  created_at: string;
-  report_date: string | null;
-};
-type StatsSignal = { signal_type: string; label: string; points: number | null };
+import type { StatsLead, StatsSignal } from "@/types/leads";
 type HotLead = {
   id: string; lead_name: string; lead_title: string | null; company: string | null;
   composite_score: number | null; tier: string | null;

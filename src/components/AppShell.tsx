@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FileSearch, Upload, LogOut, Radar } from "lucide-react";
+import { LayoutDashboard, FileSearch, Upload, LogOut, Radar, Shield } from "lucide-react";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
   const loc = useLocation();
   const isActive = (p: string) => loc.pathname === p || (p !== "/" && loc.pathname.startsWith(p));
 
@@ -40,9 +40,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             {navItem("/", "Dashboard", LayoutDashboard)}
             {navItem("/leads", "Leads", FileSearch)}
             {navItem("/upload", "Upload", Upload)}
+            {isAdmin && navItem("/admin", "Admin", Shield)}
           </nav>
           <div className="ml-auto flex items-center gap-3">
-            <div className="text-xs text-muted-foreground hidden sm:block">{user?.email}</div>
+            <div className="text-xs text-muted-foreground hidden sm:block">
+              {(user?.user_metadata as Record<string, string> | undefined)?.display_name ?? user?.email}
+            </div>
             <Button variant="ghost" size="sm" onClick={signOut}>
               <LogOut className="h-4 w-4 mr-2" /> Sign out
             </Button>

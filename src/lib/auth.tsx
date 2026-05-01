@@ -1,11 +1,16 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getMyRole } from "@/server/admin.functions";
+import { patchFetchWithAuth } from "@/lib/fetch-interceptor";
 
 type AuthCtx = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
+  roleLoading: boolean;
+  refreshRole: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -13,55 +18,42 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-// Install a one-time global fetch interceptor that attaches the current
-// Supabase access token to TanStack server function calls. Without this,
-// `requireSupabaseAuth` middleware rejects every server fn call with 401.
-let fetchPatched = false;
-function patchFetchOnce() {
-  if (fetchPatched || typeof window === "undefined") return;
-  fetchPatched = true;
-  const origFetch = window.fetch.bind(window);
-  window.fetch = async (input, init) => {
-    try {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-          ? input.toString()
-          : input.url;
-      if (url && url.includes("/_serverFn/")) {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (token) {
-          const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-          if (!headers.has("authorization")) {
-            headers.set("authorization", `Bearer ${token}`);
-          }
-          return origFetch(input, { ...init, headers });
-        }
-      }
-    } catch {
-      // fall through to original fetch
-    }
-    return origFetch(input, init);
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(false);
+
+  const fetchRole = async (currentUser: User | null) => {
+    if (!currentUser) {
+      setIsAdmin(false);
+      return;
+    }
+    setRoleLoading(true);
+    try {
+      const res = await getMyRole();
+      setIsAdmin(!!res?.isAdmin);
+    } catch (e) {
+      console.warn("[auth] failed to load role", e);
+      setIsAdmin(false);
+    } finally {
+      setRoleLoading(false);
+    }
+  };
 
   useEffect(() => {
-    patchFetchOnce();
+    patchFetchWithAuth();
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
+      void fetchRole(s?.user ?? null);
     });
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
       setLoading(false);
+      void fetchRole(data.session?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -80,10 +72,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
   const signOut = async () => {
     await supabase.auth.signOut();
+    setIsAdmin(false);
+  };
+
+  const refreshRole = async () => {
+    await fetchRole(user);
   };
 
   return (
-    <Ctx.Provider value={{ user, session, loading, signIn, signUp, signOut }}>
+    <Ctx.Provider
+      value={{
+        user,
+        session,
+        loading,
+        isAdmin,
+        roleLoading,
+        refreshRole,
+        signIn,
+        signUp,
+        signOut,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );

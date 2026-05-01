@@ -7,18 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search, Upload, X } from "lucide-react";
 import { tierClasses } from "@/lib/tier";
-
-type Row = {
-  id: string;
-  lead_name: string;
-  lead_title: string | null;
-  company: string | null;
-  email: string | null;
-  composite_score: number | null;
-  tier: string | null;
-  report_date: string | null;
-  created_at: string;
-};
+import type { LeadListRow } from "@/types/leads";
 
 export function LeadsListPage() {
   const fn = useServerFn(listLeads);
@@ -26,7 +15,7 @@ export function LeadsListPage() {
   const navigate = useNavigate({ from: "/leads/" });
   const [search, setSearch] = useState(sp.q ?? "");
   const tier = sp.tier ?? "";
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<LeadListRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // keep input in sync if URL changes externally
@@ -46,7 +35,7 @@ export function LeadsListPage() {
           signal_type: sp.signal_type,
         },
       })
-        .then((r) => setRows((r as { leads: Row[] }).leads))
+        .then((r) => setRows((r as { leads: LeadListRow[] }).leads))
         .finally(() => setLoading(false));
     }, 200);
     return () => clearTimeout(t);

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
-  RadialBarChart, RadialBar, PolarAngleAxis,
+  RadialBarChart, RadialBar, PolarAngleAxis, PieChart, Pie, Cell,
 } from "recharts";
 import { tierClasses, tierColor } from "@/lib/tier";
 
@@ -233,19 +233,30 @@ export function DashboardPage() {
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Tier distribution</div>
           <div className="mt-2 relative">
             <ResponsiveContainer width="100%" height={200}>
-              <RadialBarChart
-                innerRadius="60%" outerRadius="100%"
-                data={[
-                  { name: "HOT", value: stats.hot, fill: tierColor("HOT") },
-                  { name: "WARM", value: stats.warm, fill: tierColor("WARM") },
-                  { name: "COLD", value: stats.cold, fill: tierColor("COLD") },
-                ]}
-                startAngle={90} endAngle={-270}
-              >
-                <PolarAngleAxis type="number" domain={[0, Math.max(stats.total, 1)]} tick={false} />
-                <RadialBar background dataKey="value" cornerRadius={6} />
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: "HOT", value: stats.hot, fill: tierColor("HOT") },
+                    { name: "WARM", value: stats.warm, fill: tierColor("WARM") },
+                    { name: "COLD", value: stats.cold, fill: tierColor("COLD") },
+                  ].filter(d => d.value > 0)}
+                  dataKey="value"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="60%"
+                  outerRadius="90%"
+                  paddingAngle={2}
+                >
+                  {[
+                    { name: "HOT", value: stats.hot, fill: tierColor("HOT") },
+                    { name: "WARM", value: stats.warm, fill: tierColor("WARM") },
+                    { name: "COLD", value: stats.cold, fill: tierColor("COLD") },
+                  ].filter(d => d.value > 0).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Pie>
                 <Tooltip contentStyle={tooltipStyle} />
-              </RadialBarChart>
+              </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 grid place-items-center pointer-events-none">
               <div className="text-center">

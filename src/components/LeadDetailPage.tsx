@@ -138,7 +138,7 @@ export function LeadDetailPage({ id }: { id: string }) {
           <iframe
             title="Dossier"
             srcDoc={html}
-            sandbox="allow-same-origin"
+            sandbox="allow-same-origin allow-scripts"
             className="w-full h-[80vh] bg-white"
           />
         </Card>

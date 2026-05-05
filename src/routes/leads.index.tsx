@@ -10,6 +10,7 @@ const searchSchema = z.object({
   max: z.number().int().min(0).max(100).optional(),
   signal: z.string().optional(),
   signal_type: z.string().optional(),
+  confidence: z.enum(["high", "medium", "low", "unknown"]).optional(),
 });
 
 export const Route = createFileRoute("/leads/")({

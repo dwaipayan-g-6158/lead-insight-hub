@@ -84,6 +84,7 @@ export const listLeads = createServerFn({ method: "POST" })
       max_score: z.number().int().min(0).max(100).optional(),
       signal_label: z.string().max(200).optional(),
       signal_type: z.string().max(64).optional(),
+      confidence: z.enum(["high", "medium", "low", "unknown"]).optional(),
     }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
@@ -110,6 +111,14 @@ export const listLeads = createServerFn({ method: "POST" })
     if (data.company) q = q.eq("company", data.company);
     if (data.min_score != null) q = q.gte("composite_score", data.min_score);
     if (data.max_score != null) q = q.lte("composite_score", data.max_score);
+    if (data.confidence) {
+      if (data.confidence === "unknown") {
+        q = q.or("confidence.is.null,confidence.eq.");
+      } else {
+        // Free-text field, match "high" / "High" / "high confidence" etc.
+        q = q.ilike("confidence", `%${data.confidence}%`);
+      }
+    }
     if (signalLeadIds) q = q.in("id", signalLeadIds);
     if (data.search && data.search.trim()) {
       const term = data.search.trim();
@@ -171,7 +180,7 @@ export const getDashboardStats = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { data: leads, error } = await supabase
       .from("leads")
-      .select("id, composite_score, tier, company, fit_score, intent_score, timing_score, budget_score, fit_max, intent_max, timing_max, budget_max, created_at, report_date");
+      .select("id, lead_name, lead_title, composite_score, tier, confidence, icp_rating, company, fit_score, intent_score, timing_score, budget_score, fit_max, intent_max, timing_max, budget_max, created_at, report_date");
     if (error) throw new Error(error.message);
     const { data: signals } = await supabase.from("lead_signals").select("signal_type, label, points");
 

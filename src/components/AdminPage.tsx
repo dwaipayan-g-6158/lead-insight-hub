@@ -88,7 +88,7 @@ export function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-[0.2em] text-primary">Admin</div>
           <h1 className="text-2xl font-semibold mt-1 flex items-center gap-2">
@@ -98,29 +98,30 @@ export function AdminPage() {
             All accounts that have signed up to ELISS Lead Intelligence Hub.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading} className="self-start sm:self-auto">
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Total users</div>
-          <div className="text-2xl font-semibold mt-1">{users.length}</div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Card className="p-3 sm:p-4">
+          <div className="text-[10px] sm:text-xs text-muted-foreground">Total users</div>
+          <div className="text-xl sm:text-2xl font-semibold mt-1">{users.length}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Admins</div>
-          <div className="text-2xl font-semibold mt-1">{adminCount}</div>
+        <Card className="p-3 sm:p-4">
+          <div className="text-[10px] sm:text-xs text-muted-foreground">Admins</div>
+          <div className="text-xl sm:text-2xl font-semibold mt-1">{adminCount}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Email confirmed</div>
-          <div className="text-2xl font-semibold mt-1">{confirmedCount}</div>
+        <Card className="p-3 sm:p-4">
+          <div className="text-[10px] sm:text-xs text-muted-foreground">Confirmed</div>
+          <div className="text-xl sm:text-2xl font-semibold mt-1">{confirmedCount}</div>
         </Card>
       </div>
 
       {err && <Card className="p-3 border-destructive/40 text-destructive text-sm">{err}</Card>}
 
-      <Card className="overflow-hidden">
+      {/* Desktop table */}
+      <Card className="overflow-hidden hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground">
@@ -226,6 +227,89 @@ export function AdminPage() {
           </table>
         </div>
       </Card>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {loading && users.length === 0 ? (
+          <Card className="p-8 text-center text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin inline" />
+          </Card>
+        ) : users.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-muted-foreground">No users found.</Card>
+        ) : (
+          users.map((u) => {
+            const isMe = u.id === me?.id;
+            return (
+              <Card key={u.id} className="p-3 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm truncate">{u.email ?? "(no email)"}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono truncate">{u.id}</div>
+                  </div>
+                  {u.is_admin ? (
+                    <Badge className="bg-primary/15 text-primary hover:bg-primary/20 shrink-0">admin</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="shrink-0">user</Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <div className="text-muted-foreground">Provider</div>
+                    <div className="truncate">{u.provider ?? "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Confirmed</div>
+                    <div>
+                      {u.email_confirmed_at ? (
+                        <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 text-[10px]">yes</Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-500/40 text-amber-500 text-[10px]">pending</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Joined</div>
+                    <div className="truncate">{fmt(u.created_at)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Last sign-in</div>
+                    <div className="truncate">{fmt(u.last_sign_in_at)}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {isMe && <span className="text-[10px] text-muted-foreground mr-auto">(you)</span>}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={busyId === u.id}
+                    onClick={() => void onToggleAdmin(u)}
+                  >
+                    {busyId === u.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : u.is_admin ? (
+                      <><ShieldOff className="h-4 w-4 mr-1" /> Revoke</>
+                    ) : (
+                      <><ShieldCheck className="h-4 w-4 mr-1" /> Promote</>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={busyId === u.id || isMe}
+                    onClick={() => void onDelete(u)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </Card>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

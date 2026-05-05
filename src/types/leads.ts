@@ -53,8 +53,12 @@ export type Signal = {
 
 export type StatsLead = {
   id: string;
+  lead_name?: string | null;
+  lead_title?: string | null;
   composite_score: number | null;
   tier: string | null;
+  confidence?: string | null;
+  icp_rating?: string | null;
   company: string | null;
   fit_score: number | null;
   intent_score: number | null;

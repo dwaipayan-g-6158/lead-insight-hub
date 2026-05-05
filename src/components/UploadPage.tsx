@@ -50,7 +50,7 @@ export function UploadPage() {
 
       <Card
         {...getRootProps()}
-        className={`p-10 border-2 border-dashed cursor-pointer transition-colors ${
+        className={`p-6 sm:p-10 border-2 border-dashed cursor-pointer transition-colors ${
           isDragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
         }`}
       >

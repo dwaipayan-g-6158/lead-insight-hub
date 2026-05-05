@@ -108,7 +108,7 @@ export function LeadDetailPage({ id }: { id: string }) {
           )}
         </aside>
 
-        <Card className="p-0 overflow-hidden flex flex-col sticky top-4" style={{ height: 'calc(100vh - 5rem)' }}>
+        <Card className="p-0 overflow-hidden flex flex-col lg:sticky lg:top-4 h-[60vh] lg:h-[calc(100vh-5rem)]">
           <div className="px-4 py-2 border-b border-border text-xs text-muted-foreground flex items-center justify-between shrink-0">
             <span>Original dossier</span>
             {lead.report_date && <span>{lead.report_date}</span>}

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELISS Lead Intelligence Hub — QA Audit Report (2026-05-15)</title>
+<style>
+:root {
+  --bg: #0b0f1a;
+  --surface: #131826;
+  --surface-2: #1a2032;
+  --border: #2a3045;
+  --fg: #e7eaf3;
+  --muted: #9aa0b8;
+  --primary: #8b8fff;
+  --p0: #ef4444;
+  --p1: #f97316;
+  --p2: #eab308;
+  --p3: #38bdf8;
+  --positive: #22c55e;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  line-height: 1.55; font-size: 15px; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header.top { padding: 32px 32px 16px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #161a2e 0%, var(--bg) 100%); }
+header.top h1 { margin: 0 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+header.top .sub { color: var(--muted); font-size: 13px; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 32px 80px; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  margin: 20px 0 32px; }
+.meta .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; }
+.meta .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.meta .value { font-size: 14px; word-break: break-all; }
+.summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+  margin-bottom: 32px; }
+.summary-row .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; text-align: center; }
+.summary-row .stat .num { font-size: 32px; font-weight: 700; line-height: 1.1; margin-bottom: 4px; }
+.summary-row .stat.p0 .num { color: var(--p0); }
+.summary-row .stat.p1 .num { color: var(--p1); }
+.summary-row .stat.p2 .num { color: var(--p2); }
+.summary-row .stat.p3 .num { color: var(--p3); }
+.summary-row .stat.pos .num { color: var(--positive); }
+.summary-row .stat .cap { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
+h2 { font-size: 20px; margin: 36px 0 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+h2:first-of-type { border-top: 0; padding-top: 0; }
+.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; }
+.toc h2 { border: 0; margin: 0 0 8px; padding: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
+.toc ul { margin: 0; padding-left: 18px; }
+.toc li { margin: 4px 0; font-size: 14px; }
+.finding { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  margin: 12px 0; overflow: hidden; }
+.finding > summary { list-style: none; padding: 14px 18px; cursor: pointer; display: grid;
+  grid-template-columns: 60px 1fr auto; gap: 14px; align-items: center; }
+.finding > summary::-webkit-details-marker { display: none; }
+.finding > summary:hover { background: var(--surface-2); }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px;
+  font-weight: 700; letter-spacing: 0.04em; text-align: center; }
+.badge.p0 { background: rgba(239,68,68,0.15); color: var(--p0); border: 1px solid rgba(239,68,68,0.3); }
+.badge.p1 { background: rgba(249,115,22,0.15); color: var(--p1); border: 1px solid rgba(249,115,22,0.3); }
+.badge.p2 { background: rgba(234,179,8,0.15); color: var(--p2); border: 1px solid rgba(234,179,8,0.3); }
+.badge.p3 { background: rgba(56,189,248,0.15); color: var(--p3); border: 1px solid rgba(56,189,248,0.3); }
+.badge.positive { background: rgba(34,197,94,0.15); color: var(--positive); border: 1px solid rgba(34,197,94,0.3); }
+.finding .title { font-weight: 600; }
+.finding .id { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.finding .route { font-size: 12px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.finding .body { padding: 4px 22px 20px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.finding .body h4 { margin: 14px 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; }
+.finding .body p, .finding .body ol, .finding .body ul { margin: 0 0 8px; }
+.finding .body ol, .finding .body ul { padding-left: 22px; }
+.finding code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.finding img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border);
+  border-radius: 8px; margin: 8px 0 4px; background: #000; }
+.positive-list { background: rgba(34,197,94,0.04); border: 1px solid rgba(34,197,94,0.2); border-radius: 10px;
+  padding: 14px 22px; margin: 8px 0; }
+.positive-list h2 { color: var(--positive); border: 0; padding: 0; }
+.positive-list ul { margin: 8px 0 0; padding-left: 20px; }
+.positive-list li { margin: 4px 0; }
+.notice { background: rgba(249,115,22,0.08); border-left: 3px solid var(--p1); padding: 10px 14px;
+  border-radius: 0 6px 6px 0; font-size: 14px; margin: 14px 0; }
+.kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px; font-size: 14px; margin-top: 8px; }
+.kv .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+.appendix { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 22px; margin-top: 20px; }
+.appendix table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.appendix th, .appendix td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left;
+  vertical-align: top; }
+.appendix th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+.appendix code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.cleanup { background: rgba(234,179,8,0.06); border-left: 3px solid var(--p2); padding: 12px 18px;
+  border-radius: 0 6px 6px 0; margin: 12px 0; }
+.cleanup h3 { margin: 0 0 8px; font-size: 14px; color: var(--p2); }
+.cleanup code { font-size: 12px; }
+footer { padding: 24px 32px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>ELISS Lead Intelligence Hub — QA Audit Report</h1>
+  <div class="sub">Autonomous QA + UX audit · 2026-05-15 · <a href="https://lead-insight-hub-60066539659.development.catalystserverless.in/app/" target="_blank">live URL</a></div>
+</header>
+
+<div class="container">
+
+<div class="meta">
+  <div class="card"><div class="label">Project</div><div class="value">lead-insight-hub</div></div>
+  <div class="card"><div class="label">Catalyst Project ID</div><div class="value"><code>31210000000133001</code></div></div>
+  <div class="card"><div class="label">ZAID</div><div class="value"><code>50042133518</code></div></div>
+  <div class="card"><div class="label">Auditor</div><div class="value">Claude Opus 4.7 (autonomous)</div></div>
+  <div class="card"><div class="label">Viewports</div><div class="value">1440×900 desktop · 390×844×3 iPhone 14 Pro</div></div>
+  <div class="card"><div class="label">Network</div><div class="value">unthrottled + Slow 3G / 4× CPU</div></div>
+</div>
+
+<div class="summary-row">
+  <div class="stat p0"><div class="num">0</div><div class="cap">P0 critical</div></div>
+  <div class="stat p1"><div class="num">3</div><div class="cap">P1 high</div></div>
+  <div class="stat p2"><div class="num">11</div><div class="cap">P2 medium</div></div>
+  <div class="stat p3"><div class="num">9</div><div class="cap">P3 low</div></div>
+  <div class="stat pos"><div class="num">9</div><div class="cap">Positives</div></div>
+</div>
+
+<div class="notice">
+  <strong>Headline:</strong> The app's core Web Vitals are excellent (LCP 461 ms, CLS 0.00) and Lighthouse scores high (a11y 96, BP 100, SEO 100). The most consequential issues are <strong>security</strong> (dossier iframe sandbox escape exposes stored-XSS), <strong>destructive UX</strong> (unlabeled Delete buttons on mobile admin), and a <strong>visible template placeholder</strong> (<code>&lt;rep name&gt;</code>) leaking to end-users in lead-detail email bodies.
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ul>
+  <li><a href="#p1">P1 High (3)</a> — security, destructive UX, template leak</li>
+  <li><a href="#p2">P2 Medium (11)</a> — feature logic, data quality, accessibility, performance</li>
+  <li><a href="#p3">P3 Low (9)</a> — minor a11y, perf optimizations, timezone</li>
+  <li><a href="#positives">Positives (9)</a></li>
+  <li><a href="#coverage">Coverage &amp; methodology</a></li>
+  <li><a href="#cleanup">Test-data cleanup queue</a></li>
+  <li><a href="#artifacts">Artifact inventory</a></li>
+</ul>
+</div>
+
+<h2 id="p1">P1 High</h2>
+
+<details class="finding" open>
+<summary>
+  <span class="badge p1">P1</span>
+  <div><div class="title">Dossier iframe sandbox escape (stored-XSS attack surface)</div><div class="route">/leads/$leadId · category: security</div></div>
+  <span class="id">P1-01</span>
+</summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Browser console emits: <em>"An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."</em></p>
+<p>The dossier iframe is rendered as <code>&lt;iframe srcdoc={lead.html} sandbox="allow-scripts allow-same-origin"&gt;</code>. <code>lead.html</code> is sourced verbatim from the user-uploaded HTML on <code>/upload</code> (verified via <code>GET /server/api/leads/&lt;id&gt;</code>). Because the iframe shares the parent origin <em>and</em> can execute scripts, any uploaded HTML containing <code>&lt;script&gt;</code> can read cookies/localStorage and call <code>/server/api/*</code> with the victim's credentials.</p>
+<h4>Reproduction</h4>
+<ol>
+  <li>Log in as any user. Navigate to <code>/leads/31210000000141422</code>.</li>
+  <li>Open DevTools → Console. Observe the sandbox-escape warning at page load.</li>
+  <li>Inspect the dossier <code>&lt;iframe&gt;</code>. Confirm <code>sandbox="allow-scripts allow-same-origin"</code> and <code>srcdoc</code> populated.</li>
+</ol>
+<h4>Root cause</h4>
+<p><code>LeadDetailPage</code> renders the dossier via srcdoc with both sandbox flags. <code>functions/api/lib/parser.js</code> only extracts structured fields — the full HTML body is stored verbatim in the Data Store <code>leads.html</code> column and in Stratus, and returned to the client unmodified.</p>
+<h4>Suggested fix</h4>
+<p>Either:</p>
+<ul>
+  <li><strong>(a)</strong> Drop <code>allow-same-origin</code> from the sandbox and serve the dossier via a signed Stratus URL on a different host (sandbox escape requires both flags together).</li>
+  <li><strong>(b)</strong> Run the uploaded HTML through DOMPurify with a strict allow-list before storing; keep <code>srcdoc</code> rendering but remove <code>allow-same-origin</code>.</li>
+</ul>
+<p>Option (a) is the cleanest defense-in-depth: even if sanitizer is bypassed, scripts can't reach the parent origin.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_05_lead_detail.png" alt="Lead detail page showing dossier iframe">
+</div>
+</details>
+
+<details class="finding" open>
+<summary>
+  <span class="badge p1">P1</span>
+  <div><div class="title">Unresolved template placeholder <code>&lt;rep name&gt;</code> rendered to users in email bodies</div><div class="route">/leads/$leadId · category: feature-logic</div></div>
+  <span class="id">P1-02</span>
+</summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Inside the dossier iframe email-templates section on lead <code>31210000000141422</code> (Marco Lisboa @ AIG), the literal text <code>&lt;rep name&gt;</code> appears in 3 email body positions. End users see the placeholder string unmodified.</p>
+<h4>Reproduction</h4>
+<ol>
+  <li>Log in. Navigate to <code>/leads/31210000000141422</code>.</li>
+  <li>Scroll the dossier iframe to the outreach / email-templates section.</li>
+  <li>Observe <code>&lt;rep name&gt;</code> verbatim where the rep's name should be inserted.</li>
+</ol>
+<h4>Root cause</h4>
+<p>The upstream dossier generator leaves the <code>&lt;rep name&gt;</code> token unsubstituted when the rep identity is unknown. The Hub renders the dossier verbatim with no token-replacement layer.</p>
+<h4>Suggested fix</h4>
+<p>Inject a render-time substitution in <code>LeadDetailPage</code>: replace <code>&lt;rep name&gt;</code> with the signed-in user's full name (already available from <code>useAuth().user</code>). Fall back to a neutral phrase like "your account team" if name is unavailable. Add a lint that warns on any <code>&lt;\w+ name&gt;</code> pattern left in dossier output.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_05_lead_detail.png" alt="Lead detail with unresolved placeholder">
+</div>
+</details>
+
+<details class="finding" open>
+<summary>
+  <span class="badge p1">P1</span>
+  <div><div class="title">Mobile admin: Delete-user buttons have no accessible name</div><div class="route">/admin (mobile) · category: a11y / destructive UX</div></div>
+  <span class="id">P1-03</span>
+</summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>At 390×844 mobile viewport, 4 unlabeled <code>&lt;button&gt;</code> elements (40×32 px each) are present — one per user row. Each has no text content, no <code>aria-label</code>, no <code>title</code>. Each is the per-row <strong>Delete user</strong> destructive action.</p>
+<h4>Reproduction</h4>
+<ol>
+  <li>Emulate viewport <code>390x844x3 mobile</code>.</li>
+  <li>Log in as admin. Navigate to <code>/admin</code>.</li>
+  <li>Inspect any row's trash-icon button — element is <code>&lt;button&gt;&lt;svg/&gt;&lt;/button&gt;</code> with no accessible name.</li>
+</ol>
+<h4>Root cause</h4>
+<p>Likely <code>AdminPage.tsx</code> renders the destructive icon button with visible "Delete user" text on desktop but drops the text on mobile without adding an <code>aria-label</code> fallback.</p>
+<h4>Suggested fix</h4>
+<p>Add <code>aria-label={`Delete user ${email}`}</code> to the destructive button unconditionally. Visible text is layout-dependent; <code>aria-label</code> should always be present for icon-only destructive actions.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/mobile_06_admin.png" alt="Mobile admin page showing unlabeled icon buttons">
+</div>
+</details>
+
+<h2 id="p2">P2 Medium</h2>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">ICP Ladder uses exact-match semantics despite "≥ N stars" UI copy</div><div class="route">/ · /leads filter · feature-logic</div></div><span class="id">P2-01</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Dashboard ICP Ladder reads <em>"Click a row to drill into leads with at least that many stars."</em> All 5 production leads return <code>icp_rating: "Strong"</code>. Stats: <code>icp_min=4 → 5 leads; icp_min=3/2/1 → 0 leads</code>. Clicking ≥1★ shows 0 leads — direct violation of the "≥" contract. Adding the QA stub (icp_rating "Weak") makes <code>icp_min=2</code> return 1 — confirming the bucket is exact-match, not threshold.</p>
+<h4>Reproduction</h4>
+<ol>
+  <li>On dashboard, click ICP Ladder row "≥ 1★" → <code>/leads?icp_min=1</code> shows 0 leads.</li>
+  <li>Click "≥ 4★" → shows the 5-lead "Strong" cohort.</li>
+  <li>The empty-state UI is well-designed; the underlying count is the bug.</li>
+</ol>
+<h4>Root cause</h4>
+<p>Server <code>/server/api/stats</code> maps <code>icp_rating</code> string to a single bucket integer and the <code>/leads</code> filter compares with <code>=</code>, not <code>&gt;=</code>.</p>
+<h4>Suggested fix</h4>
+<p>At ingestion, map ICP rating strings ("Weak"→2, "Moderate"→3, "Strong"→4, "Perfect"→5) to a numeric <code>icp_stars</code> column on the leads table. Then <code>/server/api/leads?icp_min=N</code> can do <code>WHERE icp_stars &gt;= N</code> and dashboard stats can count via the same semantic.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_04_leads_empty_state.png" alt="Empty state for icp_min=5">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Signal labels case-sensitive: "Compliance Need" and "Compliance need" counted separately</div><div class="route">/ Top Score Drivers · data-quality</div></div><span class="id">P2-02</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Dashboard widget displays both <em>"Compliance Need: 3"</em> and <em>"Compliance need: 2"</em> as distinct top drivers. <code>/server/api/stats</code> returns both forms in the signals array. Visually presents as a UI duplicate.</p>
+<h4>Root cause</h4>
+<p>Dossier authors capitalize labels differently. <code>parser.js</code> stores attribution labels verbatim; the stats aggregator groups by exact string.</p>
+<h4>Suggested fix</h4>
+<p>Canonicalize at ingest (lower-case for grouping, title-case for display). Alternatively add a fuzzy-merge step in the aggregator that collapses entries whose lower-cased forms match.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_01_dashboard.png" alt="Dashboard top drivers showing case-duplicate labels">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Duplicate Marco Lisboa records are not visually distinguished</div><div class="route">/, /leads, /leads/$leadId · UX</div></div><span class="id">P2-03</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Two leads with <code>email: marco.lisboa@aig.com</code> (ROWID 31210000000141422 score 91; 31210000000138079 score 82) appear in the leads list, top opportunities, AI verdict headlines, and recent dossiers — each rendered with identical name/title/company. Only differentiator: <code>report_date</code> (2026-05-07 vs 2026-05-04), not surfaced in the row.</p>
+<h4>Suggested fix</h4>
+<p>Either (a) collapse duplicates to most-recent and surface "view history" to access prior versions, or (b) add a report-date pill on each row when an email collides. Option (a) maps better to "one lead per person."</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_03_leads_list.png" alt="Leads list showing two Marco Lisboa rows">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Parser accepts dimension scores exceeding their max</div><div class="route">/upload pipeline · feature-logic</div></div><span class="id">P2-04</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Uploaded a stub dossier with <code>budget_score=22, budget_max=20</code>. The API persisted both values verbatim. Composite score 42 = 5+5+10+22. Dashboard Budget H/M/L counters operate on the bad ratio.</p>
+<h4>Reproduction</h4>
+<ol>
+  <li>Upload a dossier with a <code>&lt;div class="dim-row"&gt;</code> where <code>dim-score</code> &gt; <code>dim-max</code>.</li>
+  <li><code>GET /server/api/leads/&lt;new-id&gt;</code> → values stored verbatim.</li>
+</ol>
+<h4>Suggested fix</h4>
+<p>In <code>functions/api/lib/parser.js</code>, after extracting each dim, <code>score = Math.min(score, max)</code> and log a warning. Surface to admins as <code>lead.parse_warnings</code> JSON.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_07_upload_success.png" alt="Upload success">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Pre-auth 401 polling: 8 calls to project-user/current before login</div><div class="route">/app/ login · noise / perceived-perf</div></div><span class="id">P2-05</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>On a freshly-loaded <code>/app/</code> with no session, 8× <code>GET /baas/v1/project/31210000000133001/project-user/current</code> return <code>401</code> and emit console errors — before the user has typed anything.</p>
+<h4>Suggested fix</h4>
+<p>Debounce or single-shot the user-current check. If a 401 is the answer, stop polling and render the login screen. Add an explicit "no session" state to <code>useAuth</code>.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Mobile: 67/100 interactive elements below WCAG 2.5.5 44×44 minimum</div><div class="route">/, /leads (mobile) · accessibility</div></div><span class="id">P2-06</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>At 390×844 viewport, an in-browser script measured: hamburger 36×36; Upload/Browse-leads CTAs 32 px tall; "View all hot" 16 px tall; verdict-confidence band rows 12 px tall. 67 of 100 measured controls fail the 44 px minimum on one dimension.</p>
+<h4>Suggested fix</h4>
+<p>Add <code>@media (pointer: coarse)</code> rules bumping <code>min-height</code> and padding on all <code>a</code>/<code>button</code> within the SPA to ≥44 px. Alternatively a Tailwind plugin applying <code>min-h-11 min-w-11</code> on a <code>.touch-target</code> base class.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/mobile_01_dashboard.png" alt="Mobile dashboard at iPhone 14 Pro size">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Color contrast: active nav 3.15:1, "View all" mini-links 3.38:1</div><div class="route">all routes · accessibility</div></div><span class="id">P2-07</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Lighthouse color-contrast audit fails for: active nav link <code>#5358ee on #171c3b → 3.15:1</code>; <code>.text-xs.text-primary</code> mini-links <code>#5358ee on #121824 → 3.38:1</code>. WCAG AA requires 4.5:1 for body text.</p>
+<h4>Suggested fix</h4>
+<p>Use a lighter shade (e.g. <code>#8b8fff</code>) for primary <em>text</em>. Keep the darker primary for filled backgrounds only. For the active-state nav, supplement color with weight or an underline so color isn't the sole affordance.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">No edit / re-score / export / share controls on lead detail — only Delete</div><div class="route">/leads/$leadId · feature-gap</div></div><span class="id">P2-08</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Lead detail page exposes exactly: Sign out (nav), Back to leads, Delete, and three Copy-email buttons. Bad-data leads (e.g. P2-04 budget&gt;max) can't be corrected without deleting and re-uploading the dossier.</p>
+<h4>Suggested fix</h4>
+<p>Minimum viable additions: <strong>Download</strong> the original HTML, <strong>re-upload as new version</strong>, and a <strong>"flag for re-score"</strong> admin action. Direct score editing is intentionally not exposed (preserves AI-grader integrity).</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Dossier iframe content overflows 13 px horizontally on mobile</div><div class="route">/leads/$leadId (mobile) · responsive</div></div><span class="id">P2-09</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Script: iframe width 356 px, inner document <code>scrollWidth</code> 369 px → 13 px horizontal scroll <em>inside</em> the iframe (outer page is clean).</p>
+<h4>Suggested fix</h4>
+<p>Inject a mobile-aware stylesheet into the dossier srcdoc (mirror the existing login-iframe.css pattern). Force <code>overflow-wrap: anywhere; table-layout: fixed; word-break: break-word; img, table { max-width: 100%; }</code>.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/mobile_04_lead_detail.png" alt="Mobile lead detail">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">No semantic &lt;h1&gt; for lead name on detail page</div><div class="route">/leads/$leadId · accessibility</div></div><span class="id">P2-10</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Outer SPA chrome on the detail page exposes no heading-role element for the lead's name — only StaticText nodes. <code>document.querySelectorAll('h1').length</code> in the outer document returns 0 (h1s exist only inside the embedded dossier iframe).</p>
+<h4>Suggested fix</h4>
+<p>Wrap the lead-name display element in <code>&lt;h1&gt;</code> (or visually-hidden screen-reader-only h1 if the design must stay flat). Demote internal iframe heading to h2 to keep a sane outline.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p2">P2</span><div><div class="title">Slow-3G dashboard load &gt;60 s with no visible skeleton</div><div class="route">/ throttled · perf / UX</div></div><span class="id">P2-11</span></summary>
+<div class="body">
+<h4>Evidence</h4>
+<p>Under Slow 3G + 4× CPU throttling, the dashboard text eventually appears but <code>wait_for</code> for "TOTAL DOSSIERS" timed out at 60 s. Mid-load <code>evaluate_script</code> showed <code>hasLoaderSpinner: false</code> while widget cards rendered empty.</p>
+<h4>Suggested fix</h4>
+<p>Add per-widget Skeleton components (project already has <code>@/components/ui/skeleton</code>). Render them while <code>query.isLoading</code> is true. Visible loaders dramatically improve perceived performance on slow connections without altering the unthrottled experience.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/slow3g_03_dashboard_60s.png" alt="Dashboard mid-load under slow-3G">
+</div>
+</details>
+
+<h2 id="p3">P3 Low</h2>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Logo aria-label "Go to dashboard" mismatches visible text "Enterprise Lead Intelligence and Scoring System"</div><div class="route">all routes · a11y</div></div><span class="id">P3-01</span></summary>
+<div class="body">
+<p>Lighthouse <code>label-content-name-mismatch</code> failure on the logo link. WCAG 2.5.3 requires the accessible name to contain the visible text. Drop the <code>aria-label</code> and let the product name serve, OR keep the aria-label and move the product name to a separate non-interactive sibling element.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Create-user dialog inputs missing autocomplete + id/name</div><div class="route">/admin Create user dialog · a11y / autofill</div></div><span class="id">P3-02</span></summary>
+<div class="body">
+<p>Console issues: <em>"An element doesn't have an autocomplete attribute"</em> and <em>"A form field element should have an id or name attribute"</em>. Add <code>name="given-name"/"family-name"/"email"</code> and matching <code>autoComplete</code> values.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_09_admin_create_user_dialog.png" alt="Create user dialog">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Admin "Provider" and "Last sign-in" always show — (data not wired)</div><div class="route">/admin · feature-gap</div></div><span class="id">P3-03</span></summary>
+<div class="body">
+<p>All 4 rows display dash placeholders on both desktop and mobile. Either hide the columns until a backing data source exists, or persist last-sign-in via a Catalyst Signals listener on auth events.</p>
+<h4>Screenshot</h4>
+<img src="screenshots/desktop_08_admin.png" alt="Admin page with dashes">
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Timezone inconsistency: CREATEDTIME (IST) vs updated_at (UTC) on lead rows</div><div class="route">/server/api/leads · data-quality</div></div><span class="id">P3-04</span></summary>
+<div class="body">
+<p>Sample row: <code>CREATEDTIME: "2026-05-15 00:11:45:798"</code>, <code>updated_at: "2026-05-14 18:41:45"</code>. Exactly the 5h30m IST offset. Convert all timestamps to UTC ISO-8601 in API responses; render local times client-side.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Possible smart-quote double-escaping in dossier objection-handler quotes</div><div class="route">/leads/$leadId iframe · data-quality</div></div><span class="id">P3-05</span></summary>
+<div class="body">
+<p>Subagent flagged 4 quote strings appearing as doubled curly quotes (e.g. <code>""We're a SailPoint shop globally""</code>). Audit the dossier generator's HTML escaping pipeline; add a snapshot test that fails on <code>""</code> or <code>''</code> in dossier HTML output.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Modern HTTP not used on some critical assets (~110 ms LCP savings)</div><div class="route">/ perf-insight</div></div><span class="id">P3-06</span></summary>
+<div class="body">
+<p>Performance trace flags ModernHTTP. Verify Slate edge config negotiates HTTP/2 or HTTP/3 ALPN for all asset MIME types.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Cache headers leave ~289 KB of repeat-visit savings</div><div class="route">/ perf-insight</div></div><span class="id">P3-07</span></summary>
+<div class="body">
+<p>For files matching <code>assets/*-[hash].{js,css}</code>, set <code>Cache-Control: public, max-age=31536000, immutable</code> via Slate route-header config. Vite's hashed asset names make this safe.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Forced reflow ~103 ms range on initial render</div><div class="route">/ perf-insight</div></div><span class="id">P3-08</span></summary>
+<div class="body">
+<p>Likely the <code>AuthGate.tsx</code> ResizeObserver iframe-measurement path or Recharts initial sizing. Move geometry reads into <code>requestAnimationFrame</code> callbacks; batch DOM writes.</p>
+</div>
+</details>
+
+<details class="finding">
+<summary><span class="badge p3">P3</span><div><div class="title">Large DOM flagged on dashboard (17+ widgets rendered eagerly)</div><div class="route">/ perf-insight</div></div><span class="id">P3-09</span></summary>
+<div class="body">
+<p>Use IntersectionObserver-based lazy mounting for below-fold widgets; render only widgets within ~1 viewport of the current scroll position. Estimated 50-60% reduction in initial DOM size.</p>
+</div>
+</details>
+
+<div class="positive-list" id="positives">
+<h2>What's working well (9)</h2>
+<ul>
+  <li><strong>Core Web Vitals are excellent</strong> on landing: LCP 461 ms, CLS 0.00, TTFB 70 ms (unthrottled).</li>
+  <li>Lighthouse <strong>a11y 96, BP 100, SEO 100</strong> — strong baseline; failures are narrow.</li>
+  <li>Empty-state UI for <code>/leads?icp_min=5</code> is well-designed (clear message, Clear-all button, Upload CTA).</li>
+  <li>Create-user form validation: proper <code>aria-invalid="true"</code> with descriptive "Required" / "Invalid email" bindings.</li>
+  <li>Mobile layout pivots from data table → card list cleanly; <strong>no outer horizontal scroll</strong> at 390 px.</li>
+  <li>Hamburger Sheet drawer works correctly — opens, traps focus, closes on Escape.</li>
+  <li>Admin role-gating via <code>AdminGuard</code>: non-admins get a soft-redirect with explanation card.</li>
+  <li>Login flow handles the multi-step Catalyst iframe (email → password → MFA) without visible jank; iframe height tracks the inner #signin_flow.</li>
+  <li>Upload → parse → display round-trip works end-to-end; new dossier appears immediately in dashboard aggregates after a single page load.</li>
+</ul>
+</div>
+
+<h2 id="coverage">Coverage &amp; methodology</h2>
+
+<div class="appendix">
+<div class="kv">
+  <div class="k">Routes covered</div><div><code>/app/ (login)</code>, <code>/</code>, <code>/leads</code>, <code>/leads?tier=HOT</code>, <code>/leads?icp_min=5</code>, <code>/leads/$leadId</code>, <code>/upload</code>, <code>/admin</code></div>
+  <div class="k">Viewports</div><div>1440×900 @ 2× (desktop), 390×844 @ 3× (iPhone 14 Pro)</div>
+  <div class="k">Network</div><div>Unthrottled (perf trace + Lighthouse), Slow 3G + 4× CPU throttling (load-experience sweep)</div>
+  <div class="k">Backend evidence</div><div>Cross-checked UI state against <code>/server/api/stats</code>, <code>/server/api/leads</code>, <code>/server/api/me</code> JSON responses</div>
+  <div class="k">Source grounding</div><div>Read local repo at <code>C:\Users\dGiri\Desktop\LABS\ELISS FRAMEWORK\lead-insight-hub-catalyst</code> to attribute root causes to file paths</div>
+  <div class="k">Destructive actions</div><div>1 stub dossier uploaded (prefix <code>qa-audit-2026-05-15-</code>); no users created; no rows deleted</div>
+  <div class="k">Account used</div><div>Test admin <code>iaminzoho@gmail.com</code> ("D Giri") — credentials held in-session, not written to disk</div>
+</div>
+</div>
+
+<h2 id="cleanup">Test-data cleanup queue</h2>
+
+<div class="cleanup">
+<h3>⚠ Awaiting your confirmation before deletion</h3>
+<p>The audit created one test lead and uploaded one HTML object to Stratus. Per the audit plan, deletion is the most destructive action and is held pending explicit go-ahead. Items to clean:</p>
+<ol>
+  <li><strong>Lead row</strong>: <code>leads</code> table ROWID <code>31210000000143490</code> ("qa-audit-2026-05-15 Stub Lead" @ "qa-audit-2026-05-15-corp")</li>
+  <li><strong>Lead signals</strong>: <code>lead_signals</code> rows <code>31210000000145505</code> and <code>31210000000145506</code> (attribution + compliance rows for the stub lead)</li>
+  <li><strong>Stratus object</strong>: bucket <code>dossiers</code>, path <code>31210000000143440/1778784105639_qa-audit-2026-05-15-stub-dossier.html</code></li>
+</ol>
+<p>Two paths to clean:</p>
+<ul>
+  <li><strong>Via UI</strong>: navigate to <code>/leads/31210000000143490</code> and click the Delete button. Verify the row is gone from <code>/leads</code> and confirm the Stratus object also disappears (or run cleanup #3 manually if it doesn't).</li>
+  <li><strong>Via Catalyst MCP</strong>: <code>Delete_Row_By_Id</code> on the leads table + the lead_signals table, then <code>Delete_File</code> / <code>Delete_Objects</code> on the dossiers bucket.</li>
+</ul>
+</div>
+
+<h2 id="artifacts">Artifact inventory</h2>
+
+<div class="appendix">
+<p>All artifacts are under <code>C:\Users\dGiri\Desktop\LABS\ELISS FRAMEWORK\lead-insight-hub-catalyst\qa-audit-2026-05-15\</code>.</p>
+<table>
+<thead><tr><th>Path</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>report.html</code></td><td>This document (self-contained, screenshots via relative paths)</td></tr>
+<tr><td><code>findings.json</code></td><td>Machine-readable mirror of all findings + summary + cleanup queue</td></tr>
+<tr><td><code>lighthouse_landing.html</code> / <code>.json</code></td><td>Full Lighthouse audit report for the landing/login URL</td></tr>
+<tr><td><code>traces/landing.json.json.gz</code></td><td>Chrome DevTools performance trace (LCP, CLS, render-blocking, forced-reflow insights)</td></tr>
+<tr><td><code>qa-audit-2026-05-15-stub-dossier.html</code></td><td>The test dossier uploaded during Sweep 1 — keep for repro</td></tr>
+<tr><td><code>screenshots/desktop_*.png</code> (10 files)</td><td>Login, dashboard, dashboard edit mode, leads list, leads empty state, lead detail, upload, upload success, admin, create-user dialog</td></tr>
+<tr><td><code>screenshots/mobile_*.png</code> (6 files)</td><td>Dashboard, hamburger drawer, leads list, lead detail, upload, admin — all at 390×844</td></tr>
+<tr><td><code>screenshots/slow3g_*.png</code> (3 files)</td><td>Dashboard at t=1s, ~loaded, and t=60s under Slow 3G + 4× CPU</td></tr>
+</tbody>
+</table>
+</div>
+
+</div>
+
+<footer>
+ELISS Lead Intelligence Hub — autonomous QA audit · 2026-05-15 · Claude Opus 4.7
+</footer>
+
+</body>
+</html>

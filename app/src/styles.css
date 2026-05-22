@@ -1,0 +1,470 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Always reserve space for the vertical scrollbar so opening a Radix Dialog
+   (which locks body scroll via react-remove-scroll) doesn't yank the
+   scrollbar out of the layout and shift every centered element by ~10px.
+   Falls back to overflow-y: scroll on browsers without scrollbar-gutter
+   support (Safari < 16). */
+html {
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
+/* react-remove-scroll (used by Radix Dialog / Popover for scroll-locking)
+   injects a stylesheet at runtime that adds `margin-right: 10px !important`
+   to `body[data-scroll-locked]` to compensate for the scrollbar it just
+   removed. We already reserve that space via scrollbar-gutter above, so
+   the library's margin double-pads and visibly shifts every centered
+   element by 10px when a dialog opens. Override with HIGHER specificity
+   than `body[data-scroll-locked]` (the library's selector) so we win the
+   cascade regardless of injection order. */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Global focus ring fallback — visible whenever a component doesn't set its own */
+:focus-visible {
+  outline: 2px solid oklch(0.65 0.19 275 / 0.75);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  /* Dark intel theme - matches the dossier aesthetic */
+  --background: oklch(0.16 0.02 260);
+  --foreground: oklch(0.92 0.01 250);
+  --card: oklch(0.21 0.025 260);
+  --card-foreground: oklch(0.92 0.01 250);
+  --popover: oklch(0.21 0.025 260);
+  --popover-foreground: oklch(0.92 0.01 250);
+  /* Lowered lightness from 0.65 → 0.55 so white-on-primary passes WCAG AA
+     4.5:1 (Lighthouse: was 3.19:1 with the old shade). Bumped chroma to
+     keep the hue feeling vivid at the darker tone. */
+  --primary: oklch(0.55 0.22 275);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.27 0.03 260);
+  --secondary-foreground: oklch(0.92 0.01 250);
+  --muted: oklch(0.25 0.025 260);
+  --muted-foreground: oklch(0.68 0.02 250);
+  --accent: oklch(0.32 0.04 270);
+  --accent-foreground: oklch(0.92 0.01 250);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.3 0.025 260);
+  --input: oklch(0.27 0.025 260);
+  --ring: oklch(0.65 0.19 275);
+  --tier-hot: oklch(0.65 0.22 25);
+  --tier-warm: oklch(0.75 0.17 70);
+  --tier-cool: oklch(0.70 0.13 195);
+  --tier-cold: oklch(0.65 0.13 230);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.984 0.003 247.858);
+  --sidebar-foreground: oklch(0.129 0.042 264.695);
+  --sidebar-primary: oklch(0.208 0.042 265.755);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.968 0.007 247.896);
+  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
+  --sidebar-border: oklch(0.929 0.013 255.508);
+  --sidebar-ring: oklch(0.704 0.04 256.788);
+}
+
+.dark {
+  --background: oklch(0.129 0.042 264.695);
+  --foreground: oklch(0.984 0.003 247.858);
+  --card: oklch(0.208 0.042 265.755);
+  --card-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(0.208 0.042 265.755);
+  --popover-foreground: oklch(0.984 0.003 247.858);
+  --primary: oklch(0.929 0.013 255.508);
+  --primary-foreground: oklch(0.208 0.042 265.755);
+  --secondary: oklch(0.279 0.041 260.031);
+  --secondary-foreground: oklch(0.984 0.003 247.858);
+  --muted: oklch(0.279 0.041 260.031);
+  --muted-foreground: oklch(0.704 0.04 256.788);
+  --accent: oklch(0.279 0.041 260.031);
+  --accent-foreground: oklch(0.984 0.003 247.858);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.551 0.027 264.364);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.208 0.042 265.755);
+  --sidebar-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.279 0.041 260.031);
+  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(215 20% 65% / 0.4);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(215 20% 65% / 0.6);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(215 20% 65% / 0.4) transparent;
+  }
+}
+
+html {
+  overflow-y: scroll;
+}
+
+/* ---------- Dashboard animations ---------- */
+@layer utilities {
+  .transition-width {
+    transition: width 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .bar-fill {
+    transition: width 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dash-enter {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+    filter: blur(2px);
+    transition:
+      opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 700ms cubic-bezier(0.16, 1, 0.3, 1),
+      filter 500ms ease-out;
+  }
+  .dash-enter-active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-muted) 0%,
+      color-mix(in oklch, var(--color-muted), white 6%) 50%,
+      var(--color-muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* ---------- Login micro-animations ---------- */
+  /* Heartbeat — lub-dub pulse next to "backed by Love" */
+  .heart-beat {
+    animation: heart-beat 1.4s ease-in-out infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+    will-change: transform;
+  }
+  /* Brand logo slow breathing glow */
+  .brand-breathe {
+    animation: brand-breathe 4.5s ease-in-out infinite;
+  }
+  /* Feature list — staggered fade-up on mount (CSS-only) */
+  .feature-stagger .feature-item {
+    opacity: 0;
+    animation: feature-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .feature-stagger .feature-item:nth-child(1) { animation-delay: 80ms; }
+  .feature-stagger .feature-item:nth-child(2) { animation-delay: 160ms; }
+  .feature-stagger .feature-item:nth-child(3) { animation-delay: 240ms; }
+  /* Login card — one-shot entrance + subtle hover lift */
+  .login-card-rise {
+    animation: card-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    transition:
+      transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 250ms ease,
+      border-color 250ms ease;
+  }
+  .login-card-rise:hover {
+    transform: translateY(-2px);
+    border-color: oklch(0.55 0.2 275 / 35%);
+  }
+  /* LogIn badge inner-glow pulse */
+  .login-badge-glow {
+    animation: badge-glow 2.8s ease-in-out infinite;
+  }
+}
+
+/* Card hover lift */
+.dash-enter-active [data-slot="card"] {
+  transition:
+    transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 250ms ease,
+    border-color 250ms ease;
+}
+.dash-enter-active [data-slot="card"]:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 24px oklch(0 0 0 / 10%),
+    0 2px 8px oklch(0 0 0 / 6%);
+  border-color: oklch(0.55 0.2 270 / 30%);
+}
+
+/* Section divider between widget groups */
+.dash-section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.4 0.02 260 / 40%) 30%,
+    oklch(0.4 0.02 260 / 40%) 70%,
+    transparent 100%
+  );
+  margin: 0.25rem 0;
+}
+
+/* Drag-and-drop widget reorder */
+.widget-drop-target {
+  position: relative;
+}
+.widget-drop-target::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px dashed oklch(0.55 0.2 270);
+  border-radius: 12px;
+  background: oklch(0.55 0.2 270 / 6%);
+  pointer-events: none;
+  z-index: 5;
+  animation: drop-pulse 1s ease-in-out infinite;
+}
+[draggable="true"] {
+  transition: opacity 200ms ease;
+}
+[draggable="true"]:active {
+  opacity: 0.5;
+}
+@keyframes drop-pulse {
+  0%,
+  100% {
+    border-color: oklch(0.55 0.2 270 / 60%);
+  }
+  50% {
+    border-color: oklch(0.65 0.22 270);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------- Login micro-animation keyframes ---------- */
+@keyframes heart-beat {
+  0%, 28%, 70%, 100% { transform: scale(1); }
+  14% { transform: scale(1.18); }
+  42% { transform: scale(1.10); }
+}
+
+@keyframes brand-breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 transparent);
+    opacity: 0.95;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px oklch(0.55 0.22 275 / 0.45));
+    opacity: 1;
+  }
+}
+
+@keyframes feature-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes badge-glow {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.55 0.22 275 / 0); }
+  50% { box-shadow: 0 0 0 4px oklch(0.55 0.22 275 / 0.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transition-width,
+  .bar-fill,
+  .dash-enter,
+  .dash-enter-active,
+  .shimmer,
+  .heart-beat,
+  .brand-breathe,
+  .feature-stagger .feature-item,
+  .login-card-rise,
+  .login-badge-glow {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+    animation: none !important;
+  }
+}
+
+/* ---- Mobile tap targets (WCAG 2.5.5) -----------------------------------
+ * Coarse pointer = touch input. Bump interactive elements to the 44 px
+ * minimum on at least one dimension. The :where() wrapper keeps
+ * specificity at 0 so existing utility classes can still override sizes
+ * where they need to (e.g. dense filter chips that intentionally stay
+ * smaller but get extra hit-area via padding via :where below).
+ */
+@media (pointer: coarse) {
+  :where(
+    button,
+    a,
+    [role="button"],
+    [role="link"],
+    [role="menuitem"],
+    [role="tab"],
+    summary,
+    label[for]
+  ):not([disabled]):not([aria-hidden="true"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Inputs and selects also benefit from the same minimum — keeps form
+     fields comfortably tappable without forcing the visual rhythm to
+     change on desktop. */
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([disabled]) {
+    min-height: 44px;
+  }
+}
+
+/* ---- Primary-on-dark text contrast (WCAG AA 4.5:1) ---------------------
+ * The existing --primary (oklch 0.55) was tuned for WHITE TEXT on a
+ * primary BACKGROUND — fine. But Lighthouse flagged primary AS TEXT on
+ * the dark card surface (#5358ee on #171c3b) at only 3.15:1.
+ *
+ * --primary-on-dark is a brighter variant used UNIVERSALLY for the
+ * text-primary utility. Even on bg-primary/15 chips, Lighthouse
+ * computes contrast against the next opaque ancestor (the dark card),
+ * not the translucent overlay — so the brighter color is the correct
+ * choice everywhere text-primary appears.
+ */
+:root {
+  --primary-on-dark: oklch(0.82 0.16 275);
+}
+
+.text-primary {
+  color: var(--primary-on-dark);
+}
+
+/* Safe-area utility classes for iPhone notch / Dynamic Island / home-indicator
+   awareness. Resolves to 0 on devices without insets, so callers can use
+   them unconditionally. Pair with `viewport-fit=cover` in index.html. */
+@layer utilities {
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+}

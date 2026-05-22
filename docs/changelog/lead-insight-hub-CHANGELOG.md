@@ -1,0 +1,112 @@
+# Lead Insight Hub — Changelog
+
+All notable changes to the Catalyst application. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
+
+The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHANGELOG.md). When a row in the table below names a skill version, that's the version vendored at `functions/eliss-generator/skill/scripts/` and `functions/eliss-heavy-generator/skill/scripts/`.
+
+---
+
+## [Unreleased]
+
+Items merged to the development branch but not yet promoted to production:
+
+- _(none — v1.0.0 is the production baseline)_
+
+---
+
+## [1.0.0] — 2026-05-22
+
+First labeled release. Everything shipped to date is rolled into this baseline. Prior states existed only on the development branch and are pre-1.0 by definition.
+
+### Application surface (frontend + API)
+
+- **Vite + React 19 + TypeScript SPA** under `app/`, deployed via Catalyst Web Client Hosting (`client.source = app/dist`).
+- **TanStack Router** with auto code-splitting; routes at `/`, `/leads`, `/leads/:leadId`, `/upload`, `/admin`, `/signup`.
+- **shadcn/ui** primitives (Radix + Tailwind) for all interactive components.
+- **Sonner** toasts and **Recharts** for the dashboard score visualizations.
+- **Express on Node 18** API Function at `functions/api/` with seven route files: `signup, auth, me, leads, dossiers, stats, admin`.
+- Middleware stack: `attachCatalyst → requireUser → loadRole → requireAdmin`.
+- Lib helpers: `auth, db (paginated ZCQL), stratus, parser, storeDossier, featureFlags, mailer`.
+- Self-signup at `POST /auth/signup` (the only public route).
+- `BUILD_ID = "2026-05-21-self-signup"` surfaced at `GET /health`.
+
+### Dossier engines
+
+- **`eliss-generator`** (Python 3.9 Job Function, 512 MB / 900 s) — light variant. Seven-stage pipeline: `queued → preflight → rocketreach → synthesis → rendering → lint → upload`. Synthesis-retry on blocking lint hits.
+- **`eliss-heavy-generator`** (Python 3.9, 3072 MB / 900 s) — heavy variant. Inserts a `fanout` stage between `rocketreach` and `synthesis`; uses `asyncio.gather` over four Anthropic subagents (Tech / Compliance / Org / Behavioral) plus a parent consolidation call. No retry on blocking lint — marks dossier `partial` instead.
+- Both functions share the `elissgenpool` Job Pool (memory ceiling 1536 MB) and a common vendored `skill/scripts/` directory carrying the upstream `/eliss` v7.4.x scripts.
+- **RocketReach baseline enrichment** runs on every path when `RR_API_KEY` is set. Coverage gaps surface as `rr_degraded=true` + an inline OSINT-only banner in the rendered HTML; the dossier is still produced and marked `partial`.
+
+### Data model
+
+Four Catalyst Data Store tables, all in the project's SINGLE_DB schema:
+
+| Table | Purpose | Notable |
+| --- | --- | --- |
+| `leads` (36 cols) | Scored dossier output. | Composite + 4-dimension scoring columns. `tier`, `composite_score`, `email` indexed. |
+| `lead_signals` (9 cols) | Per-lead buying signals. | FK to `leads.ROWID` with `ON DELETE CASCADE`. |
+| `user_roles` (7 cols) | Application RBAC. | `user_id` unique; `role IN ('admin','user')`. |
+| `dossier_requests` (22 cols) | Async job state machine. | `lead_id` FK stored as **string** (bigint precision). `rr_degraded`, `rr_degradation_reason` for coverage banner. |
+
+Regenerate always creates a NEW `leads` row — old dossier URLs continue to render the frozen snapshot.
+
+### Storage
+
+- **Stratus bucket `dossiers`** (created 2026-05-12, no versioning, no encryption, no audit in dev). Keys: `dossiers/<user_id>/ELISS_<Company>_<Last>_<YYYY-MM-DD>.html`.
+- Pre-signed GET URLs with a 1-hour TTL (`SIGNED_URL_TTL_SECONDS=3600`).
+
+### Integrations
+
+- Anthropic Claude (Sonnet 4.6) via `anthropic` Python SDK. Direct API only — no OpenRouter relay.
+- RocketReach v2 — 8 endpoints, ~12-22 person_export per dossier (light vs heavy).
+- AlienVault OTX — optional, gated on `OTX_API_KEY`.
+- XposedOrNot — free public endpoints, always on.
+- HaveIBeenPwned — optional, gated on `HIBP_API_KEY`.
+- Catalyst Native Auth — session cookies, signup email, password reset.
+- Catalyst Mail — transactional emails via `mailer.js`.
+
+### Environments
+
+- **Development** (env `60066539659`) — active, used by the team.
+- **Production** (env `50042142947`) — created, default-active for the project. No customer traffic yet at this baseline.
+
+### Project metadata
+
+- Project ID `31210000000133001`, ZAID `50042133518`, DC `in`, Timezone `Asia/Kolkata`.
+- 5 project users at baseline: 1 App Administrator (`iaminzoho@gmail.com`), 3 active App Users, 1 unconfirmed (`admin@example.com`).
+
+### Vendored skill version
+
+`/eliss` v7.4.2 — XposedOrNot probe added; baseline `--lead-email` flag wired. See [`ELISS-CHANGELOG.md`](./ELISS-CHANGELOG.md) for the upstream entry.
+
+### Known issues / followups
+
+Tracked in `qa-audit-2026-05-15/FOLLOWUPS.md`:
+- Mobile responsive fixes (sticky positioning, sheet close, verdict headline truncation) — **resolved** as of 2026-05-15.
+- No dedicated audit-events table — accepted at v1.0.0; revisit when admin actions need a queryable history.
+- Heavy generator declared memory (3072 MB) exceeds pool ceiling (1536 MB); function runs at the ceiling. Bump pool memory in production if observed OOM rates exceed 5%.
+- No CI/CD pipeline (`catalyst-pipelines.yaml` absent). All deploys are manual.
+
+### Upgrade notes
+
+There is no upgrade path from a pre-1.0 state because pre-1.0 wasn't versioned. Anyone running an older commit:
+
+1. Verify `catalyst.json` matches the v1.0.0 shape (three function targets, `app/dist` as client source).
+2. Confirm all four Data Store tables exist (`leads`, `lead_signals`, `user_roles`, `dossier_requests`). If `dossier_requests` is missing, create it manually from the schema in [`../architecture/06-data-model.md`](../architecture/06-data-model.md).
+3. Rotate `ANTHROPIC_API_KEY` and `RR_API_KEY` per [`../maintenance/07-credentials-and-rotation.md`](../maintenance/07-credentials-and-rotation.md).
+4. Deploy via the non-interactive command in [`../maintenance/04-deployment-runbook.md`](../maintenance/04-deployment-runbook.md).
+
+---
+
+## How entries are written
+
+For every release going forward, add a new section at the top of [Unreleased] and move it to a versioned heading on cut. Each section should carry these subheadings (in this order, omitting any that don't apply):
+
+- **Added** — new features visible to users.
+- **Changed** — modifications to existing behavior.
+- **Deprecated** — features marked for removal.
+- **Removed** — features deleted.
+- **Fixed** — bug fixes.
+- **Security** — vulnerability patches or policy changes.
+
+Reference commits, PR numbers, or upstream skill versions where useful. The goal is that a reader returning after 6 months can reconstruct what shipped and why.

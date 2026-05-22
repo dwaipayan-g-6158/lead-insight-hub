@@ -1,0 +1,21 @@
+{
+  "deployment": {
+    "name": "eliss-heavy-generator",
+    "stack": "python_3_9",
+    "type": "job",
+    "memory": 3072,
+    "timeout": 900,
+    "env_variables": {
+      "ANTHROPIC_API_KEY": "REPLACE_WITH_ANTHROPIC_API_KEY",
+      "ANTHROPIC_SUBAGENT_MODEL": "claude-sonnet-4-6",
+      "ANTHROPIC_PARENT_MODEL": "claude-sonnet-4-6",
+      "RR_API_KEY": "REPLACE_WITH_ROCKETREACH_API_KEY",
+      "HIBP_API_KEY": "",
+      "OTX_API_KEY": "",
+      "STRATUS_BUCKET": "dossiers"
+    }
+  },
+  "execution": {
+    "main": "main.py"
+  }
+}

@@ -1,0 +1,14 @@
+# Cache headers for Catalyst Slate (P3-07 from 2026-05-15 QA audit).
+# Vite-fingerprinted asset paths are immutable and safe to cache for a
+# year. HTML files must stay no-cache so users always pick up the
+# latest deployed entry point.
+#
+# Slate may or may not honor this file — if it doesn't, the same
+# headers can be configured in the Catalyst Console under
+# Slate → Routes. See qa-audit-2026-05-15/FOLLOWUPS.md.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.html
+  Cache-Control: no-cache

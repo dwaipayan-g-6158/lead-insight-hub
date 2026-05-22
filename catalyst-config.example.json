@@ -1,0 +1,6 @@
+{
+  "env": {
+    "STRATUS_BUCKET": "dossiers",
+    "SIGNED_URL_TTL_SECONDS": "3600"
+  }
+}

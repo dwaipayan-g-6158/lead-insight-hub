@@ -1,0 +1,19 @@
+{
+  "deployment": {
+    "name": "eliss-generator",
+    "stack": "python_3_9",
+    "type": "job",
+    "memory": 512,
+    "timeout": 900,
+    "env_variables": {
+      "ANTHROPIC_API_KEY": "sk-ant-...",
+      "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+      "RR_API_KEY": "<your-rocketreach-key>",
+      "HIBP_API_KEY": "",
+      "STRATUS_BUCKET": "dossiers"
+    }
+  },
+  "execution": {
+    "main": "main.py"
+  }
+}

@@ -1,0 +1,1044 @@
+/*
+ * Custom Catalyst embedded sign-in iframe theme.
+ * Loaded via catalyst.auth.signIn(id, { css_url }).
+ *
+ * The Catalyst SDK uses css_url as a REPLACEMENT for its default
+ * embedded_signin.css — so we import that first to keep the base layout
+ * + state-toggle rules (display:none on hidden sub-flows), then layer
+ * dark-theme colors on top.
+ */
+
+@import url("/__catalyst/auth/static-file?file_name=embedded_signin.css");
+
+/* Kill the iframe's internal scrollbar. The AuthGate ResizeObserver now
+   measures button position in body-relative coords (was viewport-relative,
+   which let body.scrollTop feedback-loop the iframe down to ~196 px and
+   clipped the .hellouser email row — fixed 2026-05-22), so the iframe
+   always fits its content and no scrolling is needed. */
+html,
+body {
+  overflow: hidden !important;
+  height: 100% !important;
+}
+body::-webkit-scrollbar,
+html::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+body,
+html {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+:root {
+  --liw-bg: #181c2a;
+  --liw-surface: #1f2334;
+  --liw-surface-2: #262b3f;
+  --liw-border: #3a3f55;
+  --liw-text: #e7e9f1;
+  --liw-text-dim: #9aa0b8;
+  --liw-text-muted: #6b7191;
+  --liw-primary: #7c6ff0;
+  --liw-primary-hover: #8c80ff;
+  --liw-danger: #ef4f6c;
+}
+
+html,
+body {
+  background: var(--liw-bg) !important;
+  color: var(--liw-text) !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Outer wrappers — flatten Catalyst's white card */
+.signin_container,
+.signin_box,
+#signin_flow,
+.signin_pane,
+.alert_signin_box {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+#signin_flow {
+  padding: 10px 18px 14px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+#signin_flow > * {
+  margin: 0 !important;
+}
+
+/* The host card already renders a "Welcome back" header — fully suppress the
+   iframe's own "Sign in" heading and its sub-titles for a clean handoff. */
+.signin_head,
+.alt_signin_head,
+.signin_head .service_name,
+.signin_head #trytitle,
+.signin_head #headtitle,
+#trytitle,
+#headtitle {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0 !important;
+}
+
+/* Hide empty alert / error placeholders.
+   Note: when they have content, the styles below take over. */
+.Alert:empty,
+.Errormsg:empty,
+.errormsg:empty,
+.fielderror:empty {
+  display: none !important;
+}
+
+.Alert,
+.errormsg-banner {
+  background: rgba(124, 111, 240, 0.12) !important;
+  color: var(--liw-text) !important;
+  border: 1px solid rgba(124, 111, 240, 0.35) !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  margin-bottom: 12px !important;
+}
+
+/* Body-level red banner. Catalyst owns the show/hide (top:-100px → top:0)
+   with a 0.2s transition; we just restyle and add a soft glow so it reads
+   as intentional rather than as a leftover form-validation artifact. */
+.Errormsg {
+  background: rgba(239, 79, 108, 0.1) !important;
+  color: var(--liw-danger) !important;
+  border: 1px solid rgba(239, 79, 108, 0.35) !important;
+  border-radius: 8px !important;
+  padding: 9px 12px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 8px 24px -10px rgba(239, 79, 108, 0.35) !important;
+  transition:
+    top 0.22s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.22s ease !important;
+}
+
+/* Field-level inline error pill ("Incorrect password. Please try again.")
+   Catalyst ships this as position:absolute top:44px which overlaps the
+   OTP/Forgot helper row (live measure showed a 19-px collision). Convert
+   to in-flow under the input so it stacks naturally; the iframe height
+   measure() in AuthGate.tsx anchors on the visible primary button, so
+   adding ~35 px of pill height grows the iframe to match.
+
+   NOTE: the iframe doc renders in BackCompat (Quirks Mode) so CSS class
+   selectors are case-INSENSITIVE. We must NOT include `.errormsg` here
+   because it would match `.Errormsg` (body-level banner) too and flip
+   its `position: fixed; top: -100px` to `relative`, making the empty
+   banner render visibly at the top of the iframe. */
+.fielderror.errorlabel,
+.fielderror {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin: 8px 0 0 !important;
+  padding: 7px 10px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  background: rgba(239, 79, 108, 0.1) !important;
+  color: var(--liw-danger) !important;
+  border: 1px solid rgba(239, 79, 108, 0.32) !important;
+  border-left-width: 3px !important;
+  border-radius: 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.005em !important;
+  line-height: 1.35 !important;
+  animation: liw-fielderr-in 0.32s cubic-bezier(0.16, 0.84, 0.32, 1) both !important;
+  /* Soften out-state too so dismissal feels equally fluid. */
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.fielderror::before {
+  content: "" !important;
+  flex: 0 0 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  background:
+    no-repeat center/contain
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef4f6c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>");
+}
+@keyframes liw-fielderr-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* When the inline pill is nested inside a .textbox_div, the parent's
+   border would draw around the pill too. Cap the parent's bottom radius
+   so the input border closes cleanly above the pill rather than wrapping
+   it visually. */
+.textbox_div:has(> .fielderror.errorlabel) {
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+
+/* Field rows */
+.fieldcontainer {
+  background: transparent !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Input wrappers — style the .textbox_div only. .searchparent wraps the
+   .textbox_div PLUS optional flag/country chrome that's blank for email
+   sign-in, so giving it its own border produced an empty bordered box
+   below the email field. Keep .searchparent transparent so only the inner
+   .textbox_div renders as a single pill. */
+.searchparent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+.textbox_div {
+  background: var(--liw-surface) !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease !important;
+}
+.textbox_div:focus-within {
+  border-color: var(--liw-primary) !important;
+  box-shadow: 0 0 0 3px rgba(124, 111, 240, 0.18) !important;
+}
+/* Defensive: never paint .textbox_div decorations when its ancestor is
+   one of Catalyst's collapsed wrappers. .zeroheight is height:0 +
+   overflow:hidden on the parent, but our 1px border still leaks a 2-px
+   sliver visually because the descendant has nonzero rendered geometry
+   inside a position-static parent. */
+.zeroheight .textbox_div,
+[hidden] .textbox_div {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Inputs */
+input.textbox,
+.textbox {
+  background: transparent !important;
+  color: var(--liw-text) !important;
+  border: none !important;
+  outline: none !important;
+  /* Inputs don't inherit font-family by default — they fall back to the
+     UA stylesheet (Arial in Catalyst's environment). Force the same system
+     stack as body so the typed text matches the rest of the page (the
+     ".username" readonly display above uses the body stack). */
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  padding: 12px 14px !important;
+}
+input.textbox::placeholder,
+.textbox::placeholder {
+  color: var(--liw-text-muted) !important;
+}
+
+/* Show/Hide password icon (font-icon span) */
+.show_hide_password,
+.icon-hide,
+.icon-show {
+  color: var(--liw-text-muted) !important;
+  cursor: pointer;
+}
+.show_hide_password:hover,
+.icon-hide:hover,
+.icon-show:hover {
+  color: var(--liw-text) !important;
+}
+
+/* "Change" link (the "Notyou" affordance) */
+.Notyou,
+.bluetext,
+.notyou {
+  color: var(--liw-primary) !important;
+  /* Matched to body input/text 14 px for visual uniformity with the email
+     display + password input on the same screen. */
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  background: transparent !important;
+}
+
+/* The "remembered email" row Catalyst renders above the password input on
+   the password step: <div class="hellouser"><div class="username">… email
+   …</div><span class="Notyou">Change</span></div>. Catalyst ships .username
+   at 16 px / weight 500, which is 2 px LARGER AND visibly bolder than the
+   password input below. Match font-size + font-weight + font-family to the
+   input so the two lines optically read as one consistent block. */
+.hellouser .username,
+.username {
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.4 !important;
+  color: var(--liw-text) !important;
+}
+.Notyou:hover,
+.bluetext:hover {
+  color: var(--liw-primary-hover) !important;
+}
+
+/* Helper-link row inside the password textbox_div
+   ("Sign in using email OTP" left, "Forgot Password?" right).
+   Catalyst ships this as float-based; convert to a flex space-between
+   strip with a top divider so it reads as a footer below the input
+   instead of text glued inside the bordered field.
+   IMPORTANT: do NOT force `display: flex !important` — Catalyst's own
+   stylesheet keeps `#enableotpoption` at `display: none` on the email
+   lookup step and toggles it to flex once the password field activates.
+   Forcing display here leaked the "Sign in using OTP / Forgot Password?"
+   row onto the initial email screen. We omit the display rule and rely
+   on Catalyst's toggle; our styles only kick in when the row is
+   actually shown. */
+#enableotpoption,
+.textbox_actions {
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 9px 12px 10px !important;
+  border-top: 1px solid var(--liw-border) !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+}
+/* When Catalyst has toggled the row visible (it sets inline `display:
+   flex` or `display: block`), apply our flex layout. The negative
+   `display: none` check ensures we don't override the hidden default.
+   v17 — also catch `#otp_container .textbox_actions`: on the OTP step
+   Catalyst leaves this row's display CSS-driven (no inline style), so
+   the `[style*="display"]` gating above misses and the children
+   ("Sign in using password" + "Resend OTP") render as plain inline
+   text with no separator. The row is in the DOM only when the OTP
+   container is itself visible, so the descendant selector is safe. */
+#enableotpoption[style*="display: flex"],
+#enableotpoption[style*="display: block"],
+.textbox_actions[style*="display: flex"],
+.textbox_actions[style*="display: block"],
+#otp_container .textbox_actions {
+  display: flex !important;
+}
+#enableotpoption > .bluetext_action,
+.textbox_actions > .bluetext_action,
+#signinwithotp,
+#blueforgotpassword,
+.bluetext_action_right {
+  float: none !important;
+  display: inline-block !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  color: var(--liw-text-dim) !important;
+  cursor: pointer !important;
+  background: transparent !important;
+  border: none !important;
+  text-decoration: none !important;
+  transition: color 0.15s ease !important;
+}
+#enableotpoption > .bluetext_action:hover,
+.textbox_actions > .bluetext_action:hover,
+#signinwithotp:hover,
+#blueforgotpassword:hover {
+  color: var(--liw-primary) !important;
+}
+
+/* Primary action buttons — color only, no width override.
+   position: relative is required so the Catalyst pending-state loader
+   (.loadwithbtn, position: absolute) anchors inside the button instead
+   of escaping to the iframe viewport when the SIGN IN flow is in flight. */
+button.btn,
+button.btn.blue,
+input.btn,
+input.btn.blue,
+#nextbtn,
+#changepassword,
+.btn.blue.verifyBackupCodebtn,
+.btn.blue.trustbtn,
+.btn.blue.trustdevice {
+  position: relative !important;
+  background: var(--liw-primary) !important;
+  color: #ffffff !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  padding: 9px 14px !important;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.05s ease !important;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Center the Catalyst loading indicator inside the primary button.
+
+   Centering uses `position: absolute; inset: 0; margin: auto;` — this
+   pattern centers an element in its positioned ancestor without any
+   transform math, which is critical because:
+   1. iOS Safari has subpixel rounding bugs with `transform: translate(-50%, -50%)`
+      on bordered elements — the spinner ended up shifted ~1-2 px off-center
+      on the real device even though it looked perfect in Chrome emulation.
+   2. `inset: 0` + `margin: auto` resolves at the CSS layout level (not the
+      compositing layer), so the centering is pixel-snapped and identical
+      across iOS WebKit, Android Chrome, and desktop browsers.
+
+   Catalyst builds the spinner with 4 border sides: 3 white + 1 light blue.
+   On our purple button that blue accent reads as a stray dot. Override to
+   a clean white-arc spinner: solid white top + 25%-white track on the
+   other 3 sides = a rotating 90° arc, the unambiguous "loading" affordance
+   modern UIs use. */
+.loadwithbtn,
+.changeloadbtn::before,
+button.btn .loadwithbtn,
+button.btn.changeloadbtn::before {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  margin: auto !important;
+  transform: none !important;
+  box-sizing: border-box !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  border-top: 2px solid #ffffff !important;
+  border-right: 2px solid rgba(255, 255, 255, 0.28) !important;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.28) !important;
+  border-left: 2px solid rgba(255, 255, 255, 0.28) !important;
+  background: transparent !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+
+/* Catalyst's .changeloadbtn — applied to the SIGN IN button during email→
+   password transition AND during the post-submit redirect — defaults to a
+   44×44 circle with padding:0. Our base .btn.blue padding (9px 14px) plus
+   that 44×44 width produced the misaligned ~72×62 rounded blob the user
+   saw in 2026-05-14_00_23_01.png. Force the button to keep its full-width
+   geometry and center Catalyst's ::before pseudo-element spinner. */
+button.btn.changeloadbtn,
+.btn.blue.changeloadbtn,
+.btn.changeloadbtn {
+  width: 100% !important;
+  height: 44px !important;
+  border-radius: 8px !important;
+  padding: 9px 14px !important;
+  background: var(--liw-primary) !important;
+  /* Hide any residual button text so only the spinner shows */
+  color: transparent !important;
+  text-indent: -9999px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+/* `.changeloadbtn::before` styling is consolidated in the merged
+   spinner block above (selector includes both .loadwithbtn and
+   .changeloadbtn::before so the arc-style ring applies uniformly to
+   the NEXT and SIGN IN buttons in both loading states). */
+.changeloadbtn::before {
+  text-indent: 0 !important;
+}
+button.btn.blue:hover,
+#nextbtn:hover {
+  background: var(--liw-primary-hover) !important;
+}
+
+button.btn.grey,
+.btn.notnowbtn,
+#terminate_session_skip,
+.btn.grey.skipbtn {
+  background: var(--liw-surface-2) !important;
+  color: var(--liw-text) !important;
+  border: 1px solid var(--liw-border) !important;
+}
+button.btn.grey:hover {
+  background: var(--liw-border) !important;
+}
+
+/* Supplementary links */
+.text16,
+a.text16,
+.goToForgotPassword,
+.blueforgotpassword,
+.goToSigninOption {
+  color: var(--liw-text-dim) !important;
+  font-size: 13px !important;
+  text-decoration: none !important;
+}
+.text16:hover,
+.goToForgotPassword:hover,
+.blueforgotpassword:hover,
+.goToSigninOption:hover {
+  color: var(--liw-primary) !important;
+}
+
+#forgotpassword {
+  margin-top: 8px !important;
+  background: transparent !important;
+}
+
+/* Catalyst ships up to THREE elements with id="blueforgotpassword" on the
+   password step (one inside #enableotpoption, one inside #enableforgot, one
+   inside #enablemore, plus a #forgotpassword div under SIGN IN). When the
+   OTP+Forgot in-row helper (#enableotpoption) is visible, the others are
+   redundant — hide them all. */
+body:has(#enableotpoption[style*="display: block"]) #forgotpassword,
+body:has(#enableotpoption:not([style*="display: none"])) #forgotpassword,
+body:has(#enableotpoption[style*="display: block"]) #enableforgot,
+body:has(#enableotpoption:not([style*="display: none"])) #enableforgot {
+  display: none !important;
+}
+
+/* Federated / social sign-in fully removed for this workspace — Catalyst
+   email/password is the only allowed sign-in path. We suppress the
+   "Sign in using" label, the "or" separator, the icon row, and every
+   provider icon (zoho/google/linkedin/facebook/microsoft) so nothing
+   leaves residual padding inside the iframe. */
+.signin_fed_text,
+.or_seperator,
+.fed_2show,
+.fed_div,
+.zoho_fed_box,
+.google_fed_box,
+.linkedin_fed_box,
+.facebook_fed_box,
+.microsoft_fed_box,
+.fed_show_more {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* Trust-device / terminate-sessions popovers (rendered as separate flow) */
+.trustdevicepop,
+.terminate_session_pop {
+  background: var(--liw-surface) !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  color: var(--liw-text) !important;
+}
+
+/* Captcha + checkbox accents */
+input[type="checkbox"] {
+  accent-color: var(--liw-primary) !important;
+}
+
+label,
+.label {
+  color: var(--liw-text-dim) !important;
+}
+
+/* Scrollbars inside the iframe stay hidden (top of file rules) — content is
+   always reachable via natural scrolling but the visual chrome is clean. */
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * v14 — Login-iframe interaction polish
+ *
+ * Issue reported 2026-05-14: clicking "Sign in using password" / "Resend OTP"
+ * inside the OTP step produces visible UI jank — the "OTP sent to …" banner
+ * never reaches the user, and the mode swap shows a 100 ms squeeze because
+ * Zoho's #signin_flow has its own 0.1s ease-in-out transition while our
+ * parent iframe is height-locked.
+ *
+ * Investigation captured at C:\Users\dGiri\lead-insight-hub-debug\.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* Zoho's alert ships with inline style="top: -150px;" and is animated into
+   view by a runtime class that doesn't apply inside our constrained iframe.
+   Override the inline style and slide the banner in ourselves whenever it
+   carries an actual message.
+
+   IMPORTANT: the earlier `.Alert:empty { display: none }` rule never
+   matches because Catalyst always renders the Alert with two child spans
+   (<span class="tick_icon"></span> <span class="alert_message"></span>),
+   so the element is never technically `:empty`. We use `:has()` to test
+   whether the inner `.alert_message` carries text — empty message ⇒
+   hidden, populated ⇒ slide in. */
+.Alert {
+  display: none !important;
+}
+.Alert:has(.alert_message:not(:empty)) {
+  display: block !important;
+  /* v18 — Fixed-position toast anchored to iframe-viewport top so
+     Catalyst's body auto-scroll (which fires on focus of OTP input,
+     setting body.scrollTop ≈ 100 px) doesn't push the banner out of
+     view. We give body a matching padding-top via the :has() rule
+     below so the form CONTENT shifts down by banner height — banner
+     visible on top, form rows below, no overlap.
+
+     Auto-dismiss is driven by AuthGate.tsx (setTimeout adds the
+     `.liw-alert-dismissed` class 4 s after the message text appears).
+     The opacity + max-height + padding transition collapses the banner
+     smoothly; the body-level :has() rule simultaneously removes the
+     padding-top so form snaps back. */
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  right: 8px !important;
+  bottom: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  z-index: 10 !important;
+  opacity: 1 !important;
+  max-height: 200px !important;
+  overflow: hidden !important;
+  transition:
+    opacity 0.3s ease,
+    max-height 0.3s ease,
+    padding 0.3s ease,
+    border-width 0.3s ease !important;
+}
+/* Specificity note: the `.Alert:has(...)` rule above has specificity
+   (0,3,0) due to the inner `.alert_message:not(:empty)`. The dismiss
+   rule must chain :has() too to outrank it under !important cascade. */
+.Alert.liw-alert-dismissed:has(.alert_message:not(:empty)) {
+  opacity: 0 !important;
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-width: 0 !important;
+  pointer-events: none !important;
+}
+/* Push form content down by banner height when the banner is visible
+   (alert has a non-empty message AND has not been dismissed yet). The
+   transition runs in lock-step with the .Alert collapse above so the
+   form rows shift smoothly. */
+body:has(.Alert:not(.liw-alert-dismissed) .alert_message:not(:empty)) {
+  padding-top: 76px !important;
+  transition: padding-top 0.3s ease !important;
+}
+body {
+  transition: padding-top 0.3s ease !important;
+}
+.Alert:has(.alert_message:not(:empty)) .topNotificationClose {
+  position: relative !important;
+  float: right !important;
+  margin-left: 8px !important;
+  width: 14px !important;
+  height: 14px !important;
+  cursor: pointer !important;
+  opacity: 0.7 !important;
+}
+.Alert:has(.alert_message:not(:empty)) .topNotificationClose:hover {
+  opacity: 1 !important;
+}
+.Alert:has(.alert_message:not(:empty)) .tick_icon {
+  margin-right: 8px !important;
+  vertical-align: middle !important;
+}
+
+/* Kill the 100 ms ease on #signin_flow — it's the visible "squeeze" during
+   the mode swap. Replace with a clean opacity cross-fade on the two
+   absolutely-stacked panes (#otp_container and #login both sit at y≈50)
+   so the swap reads as an instant fade rather than a layout jump.
+
+   Note: previously we also pinned `#signin_div { min-height: 260px }` to
+   prevent the form pane from growing on swap. That backfired on the
+   email step (only ~132 px of real content) by leaving ~128 px of empty
+   dark gutter below the NEXT button. The mode swap now drives the
+   ResizeObserver in AuthGate.tsx instead — iframe height tracks the
+   actual button bottom, so a ±20 px mode-swap growth is absorbed as an
+   imperceptible iframe resize. */
+#signin_flow {
+  transition: none !important;
+}
+#otp_container,
+#login,
+#emailverify_container {
+  transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+/* Inputs + buttons settle in alongside the step swap so the whole pane
+   feels like a single fluid motion rather than a series of pops. */
+.textbox_div,
+button.btn,
+#enableotpoption,
+#otp_container .textbox_actions {
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.25s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease !important;
+}
+
+/* Quirks-mode hardening — Zoho's iframe ships an HTML 4.0 Frameset DOCTYPE
+   so document.compatMode === "BackCompat". Force the standards box model
+   inside the form column to neutralize the most common quirks-mode layout
+   surprise (width including padding/border vs. content-box). Scoped to
+   #signin_flow so we don't reach the fixed-position Alert that lives in
+   body. */
+#signin_flow,
+#signin_flow *,
+#signin_flow *::before,
+#signin_flow *::after {
+  box-sizing: border-box !important;
+}
+
+/* Keep Zoho's intrinsic 520-px form pane (set by embedded_signin.css on
+   #signin_flow and .signin_container). We DON'T need to collapse it here
+   because the iframe shell now measures the visible primary button's
+   bottom edge (AuthGate.tsx) and clips anything below — so the orphan
+   password textbox_div / forgot-password / federated-row elements that
+   live in the unused tail of signin_flow are simply hidden by the
+   iframe boundary instead of by our CSS. Trying to shrink signin_flow
+   itself exposed those orphans (they leaked through Catalyst's own
+   zeroheight wrappers because of border-box / our border declarations). */
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * v22 — Recovery / Forgot-Password iframe theming
+ *
+ * Clicking "Forgot Password?" navigates the iframe to
+ * /accounts/p/<zaid>/password?...&css_url=embedded_password_reset.css
+ * (Catalyst's own default). AuthGate.tsx injects this stylesheet into
+ * that doc on load so the rules below apply to the recovery flow too.
+ * The recovery doc uses .recovery_container / .recovery_box /
+ * .recover_sections as its structural shell instead of #signin_flow.
+ * ────────────────────────────────────────────────────────────────────────── */
+.recovery_container,
+.recovery_box,
+.recover_sections {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  color: var(--liw-text) !important;
+}
+.recovery_box {
+  padding: 10px 18px 14px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  /* Cancel Catalyst's intrinsic 500-px min-height + y:-172 vertical offset
+     that pushes the page header above the iframe viewport. */
+  min-height: 0 !important;
+  position: static !important;
+  transform: none !important;
+  top: auto !important;
+}
+.recover_sections {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Page heading "Forgot Password" + sub-line */
+.info_head,
+.recovery_box .info_head,
+.recovery_box h1,
+.recovery_box h2,
+.recovery_box .recovery_head {
+  color: var(--liw-text) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.005em !important;
+  margin: 0 0 4px !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+.info_subhead,
+.recovery_box .info_subhead {
+  color: var(--liw-text-dim) !important;
+  font-size: 12.5px !important;
+  margin: 0 0 8px !important;
+}
+
+/* Captcha — Catalyst ships an awkward structure:
+     #captcha_container.textbox_div
+       └─ #captcha_img.textbox  (a DIV named like a textbox)
+            └─ IMG#hip          (the captcha image, ~150×40 natural)
+       └─ .reloadcaptcha (absolutely-positioned, parked at margin-top: -37 px)
+       └─ INPUT#captcha.textbox
+   The default rendering puts the image floating to the right at half-width
+   and the input at half-width below it; the reload icon sits offscreen.
+   Re-flow as a single vertical stack: image strip on top with reload
+   anchored right, input below at full width. */
+/* Style the captcha container's geometry + chrome, but DO NOT force
+   `display: grid` here. Catalyst's default (from embedded_signin.css)
+   is `display: none` — the iframe ships the captcha DOM on every page
+   and toggles it visible only when IAM challenges the user. Forcing
+   display: grid here makes CAPTCHA show on every login attempt even
+   when Catalyst didn't ask for one. We activate the grid layout via
+   the conditional rule below, matching the same `[style*="display:"]`
+   gating pattern used for #enableotpoption. */
+#captcha_container.textbox_div {
+  width: 100% !important;
+  max-width: 100% !important;
+  grid-template-columns: 1fr auto !important;
+  grid-auto-rows: auto !important;
+  gap: 10px !important;
+  align-items: center !important;
+  padding: 10px !important;
+  margin: 4px 0 !important;
+  background: var(--liw-surface) !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 8px !important;
+}
+/* Apply grid layout only when Catalyst has explicitly toggled the
+   container visible (inline `display: block / flex / grid`), or when
+   we're inside the recovery doc (where the captcha is always part of
+   the flow). Otherwise the container stays at Catalyst's default
+   `display: none`. */
+#captcha_container.textbox_div[style*="display: block"],
+#captcha_container.textbox_div[style*="display: flex"],
+#captcha_container.textbox_div[style*="display: grid"],
+.recovery_box #captcha_container.textbox_div {
+  display: grid !important;
+}
+/* Position image + reload in row 1; input + error span both columns
+   in subsequent rows. Catalyst's DOM order varies (signin vs recovery)
+   so explicit grid placement keeps the layout deterministic. */
+#captcha_img.textbox {
+  grid-column: 1 / 2 !important;
+  grid-row: 1 !important;
+}
+.reloadcaptcha,
+.reloadcaptcha.icon-reload {
+  grid-column: 2 / 3 !important;
+  grid-row: 1 !important;
+}
+#captcha,
+#captcha.textbox {
+  grid-column: 1 / -1 !important;
+  grid-row: 2 !important;
+}
+#captcha_container.textbox_div > .fielderror,
+#captcha_container.textbox_div > .fielderror.errorlabel {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+}
+/* Image strip — flex row, image left, reload right. Override the .textbox
+   font-size + padding inherited from input rules above.
+   The captcha is white-card-on-dark-form: Catalyst's IAM captcha PNG ships
+   with colored glyphs on a light background, so any dark overlay or invert
+   filter destroys contrast (verified visually 2026-05-22). Keep the
+   background white and let the image render at its native colors. */
+#captcha_img.textbox {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 56px !important;
+  margin: 0 !important;
+  padding: 6px 8px !important;
+  background-color: #ffffff !important;
+  background-repeat: no-repeat !important;
+  background-position: center center !important;
+  background-size: contain !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 6px !important;
+  font-size: inherit !important;
+}
+#hip,
+#captcha_img img {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 38px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+  filter: none !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+}
+/* Reload icon — un-offset Catalyst's margin: -37 0 0 absolute hack and
+   render our own SVG glyph as a background. Catalyst's stock signin doc
+   ships the span without the `icon-reload` class, so the font-icon never
+   renders — the inline SVG below makes the affordance work on every
+   Catalyst sub-page consistently. */
+.reloadcaptcha,
+.reloadcaptcha.icon-reload {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  height: 32px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--liw-text-dim) !important;
+  background-color: transparent !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa0b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12a9 9 0 0 1 15.5-6.3L21 8'/><polyline points='21 3 21 8 16 8'/><path d='M21 12a9 9 0 0 1-15.5 6.3L3 16'/><polyline points='3 21 3 16 8 16'/></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: center center !important;
+  background-size: 18px 18px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  font-size: 0 !important;
+  transition:
+    background-color 0.18s ease,
+    transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) !important;
+}
+.reloadcaptcha:hover,
+.reloadcaptcha.icon-reload:hover {
+  background-color: rgba(124, 111, 240, 0.12) !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c6ff0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12a9 9 0 0 1 15.5-6.3L21 8'/><polyline points='21 3 21 8 16 8'/><path d='M21 12a9 9 0 0 1-15.5 6.3L3 16'/><polyline points='3 21 3 16 8 16'/></svg>") !important;
+  transform: rotate(-180deg) !important;
+}
+.reloadcaptcha:active,
+.reloadcaptcha.icon-reload:active {
+  transform: rotate(-360deg) !important;
+  transition-duration: 0.6s !important;
+}
+/* CAPTCHA text input — sits below the image strip, full width. */
+#captcha,
+#captcha.textbox {
+  width: 100% !important;
+  height: 44px !important;
+  padding: 10px 14px !important;
+  margin: 0 !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  color: var(--liw-text) !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease !important;
+}
+#captcha:focus,
+#captcha.textbox:focus {
+  outline: none !important;
+  border-color: var(--liw-primary) !important;
+  box-shadow: 0 0 0 3px rgba(124, 111, 240, 0.18) !important;
+}
+/* User info row on the recovery page ("dwaipayan.g@zohotest.com  Change") */
+#recovery_user_info.user_info {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  width: 100% !important;
+  margin: 0 0 6px !important;
+  padding: 0 !important;
+}
+#recovery_user_info .menutext {
+  flex: 1 1 auto !important;
+  padding: 10px 14px !important;
+  background: var(--liw-surface) !important;
+  border: 1px solid var(--liw-border) !important;
+  border-radius: 8px !important;
+  color: var(--liw-text) !important;
+  /* Match the active password input directly below (input.textbox at 14 px).
+     The previous 13 px / line-height: 1.3 made the displayed email visually
+     smaller than what the user just typed — caused a "fonts feel inconsistent"
+     complaint. 14 px / 1.4 lines up optically with input.textbox padding. */
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  /* Show text mid-line vs the bare text overflow Catalyst defaults to */
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+/* On the recovery doc, Catalyst renders BOTH an editable login_id input
+   (rect 0×0×0×0 by default — supposed to be invisible) and the menutext
+   display above. Our flex/box-sizing tweaks sometimes resurrect the
+   editable input as a visible second row. Hide it only inside the
+   recovery doc so the signin doc's email input is unaffected. */
+.recovery_box #login_id_container,
+.recovery_box #login_id_div,
+.recovery_box #login_id,
+.recovery_box #login_id_container_form > .searchparent {
+  display: none !important;
+}
+#recovery_user_info .change_user {
+  flex: 0 0 auto !important;
+  padding: 0 4px !important;
+  color: var(--liw-primary) !important;
+  /* Bumped 13 → 14 to sit on the same optical line as the menutext to its
+     left and the password input below — keeps the action affordance from
+     looking like a smaller, less-confident link than the surrounding text. */
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  background: transparent !important;
+}
+#recovery_user_info .change_user:hover {
+  color: var(--liw-primary-hover) !important;
+}
+
+/* All recovery-flow buttons inherit .btn.blue styling already defined
+   above; just normalize widths so they don't collapse to content size. */
+.recovery_box button.btn,
+.recovery_box input.btn,
+.recovery_box .btn.blue {
+  width: 100% !important;
+}
+
+/* Recovery success / status messages (success path after captcha submit) */
+.recovery_box .Alert,
+.recovery_box .errormsg-banner,
+.recovery_box .Errormsg,
+.recovery_box .successmsg-banner {
+  background: rgba(124, 111, 240, 0.12) !important;
+  color: var(--liw-text) !important;
+  border: 1px solid rgba(124, 111, 240, 0.35) !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+}
+
+/* MFA / OTP section within the recovery flow */
+#mfa_otp_section,
+#mfa_otp_section .fieldcontainer {
+  background: transparent !important;
+}
+
+/* Quirks-mode hardening for the recovery doc, same as #signin_flow above. */
+.recovery_box,
+.recovery_box *,
+.recovery_box *::before,
+.recovery_box *::after {
+  box-sizing: border-box !important;
+}

@@ -1,0 +1,370 @@
+{
+  "audit": {
+    "project": "lead-insight-hub",
+    "projectId": "31210000000133001",
+    "zaid": "50042133518",
+    "url": "https://lead-insight-hub-60066539659.development.catalystserverless.in/app/",
+    "auditDate": "2026-05-15",
+    "auditor": "Claude Opus 4.7 (autonomous QA)",
+    "viewportsTested": ["1440x900 desktop", "390x844x3 iPhone 14 Pro mobile"],
+    "networkConditions": ["unthrottled", "Slow 3G + 4x CPU"],
+    "routesCovered": ["/app/ (login)", "/", "/leads", "/leads?tier=HOT", "/leads?icp_min=5", "/leads/$leadId", "/upload", "/admin"],
+    "destructiveActions": ["uploaded 1 stub dossier with prefix qa-audit-2026-05-15-"],
+    "cleanupQueue": [
+      {"type": "lead row", "rowid": "31210000000143490", "name": "qa-audit-2026-05-15 Stub Lead", "company": "qa-audit-2026-05-15-corp"},
+      {"type": "stratus object", "path": "31210000000143440/1778784105639_qa-audit-2026-05-15-stub-dossier.html"},
+      {"type": "lead_signals rows", "ids": ["31210000000145505", "31210000000145506"]}
+    ]
+  },
+  "summary": {
+    "P0_critical": 0,
+    "P1_high": 3,
+    "P2_medium": 11,
+    "P3_low": 9,
+    "totalFindings": 23,
+    "lighthouseScores": { "accessibility": 96, "bestPractices": 100, "seo": 100 },
+    "coreWebVitals_landing": { "LCP_ms": 461, "CLS": 0, "TTFB_ms": 70 }
+  },
+  "findings": [
+    {
+      "id": "P1-01",
+      "severity": "P1",
+      "title": "Dossier iframe sandbox escape (stored-XSS attack surface)",
+      "route": "/leads/$leadId",
+      "category": "security",
+      "evidence": "Console: 'An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.' Iframe is rendered as srcdoc with content from the /server/api/leads/<id> 'html' field, which originates verbatim from user-uploaded HTML on /upload.",
+      "reproSteps": [
+        "Log in. Navigate to /leads/31210000000141422.",
+        "Open DevTools console — observe the sandbox-escape warning.",
+        "Inspect the iframe element: `sandbox=\"allow-scripts allow-same-origin\"`, `srcdoc=\"...user HTML...\"`.",
+        "Because the iframe shares the parent origin AND can run scripts, malicious dossier HTML can read cookies/localStorage and call /server/api/* with the victim's credentials."
+      ],
+      "rootCause": "LeadDetailPage renders the dossier via `<iframe srcdoc={...} sandbox='allow-scripts allow-same-origin'>`. The combination negates sandboxing. functions/api/lib/parser.js does not sanitize the HTML — only field extraction. The full HTML is stored verbatim in Data Store (lead.html column) and Stratus and returned to the client.",
+      "suggestedFix": "Either (a) drop `allow-same-origin` from the iframe sandbox and serve the HTML via a signed Stratus URL on a different origin/subdomain so cookies don't apply, or (b) run the uploaded HTML through DOMPurify with a strict allow-list before storing, and continue serving via srcdoc but with `allow-same-origin` removed.",
+      "screenshot": "screenshots/desktop_05_lead_detail.png"
+    },
+    {
+      "id": "P1-02",
+      "severity": "P1",
+      "title": "Unresolved template placeholder `<rep name>` rendered to users in email bodies",
+      "route": "/leads/$leadId",
+      "category": "feature-logic",
+      "evidence": "Inside the dossier iframe email-template section, literal text `<rep name>` appears in 3 email body locations on lead 31210000000141422 (subagent line refs 966, 991, 1008). End users will see the placeholder string verbatim.",
+      "reproSteps": [
+        "Log in. Navigate to /leads/31210000000141422.",
+        "In the dossier iframe scroll to the email-templates / outreach section.",
+        "Observe the literal text `<rep name>` where the rep's name should be substituted."
+      ],
+      "rootCause": "Dossier-generation pipeline upstream of ELISS Hub leaves the `<rep name>` token unsubstituted when the rep identity is not known. The Hub displays the dossier verbatim and has no token-replacement layer.",
+      "suggestedFix": "Either substitute `<rep name>` with the signed-in user's full name at render time (client-side, since the dossier is rendered in-page), or fall back to a generic neutral phrasing (e.g. 'your account team'). Add a render-time lint that warns when any `<word> name>` placeholder pattern remains.",
+      "screenshot": "screenshots/desktop_05_lead_detail.png"
+    },
+    {
+      "id": "P1-03",
+      "severity": "P1",
+      "title": "Mobile admin: Delete-user buttons have no accessible name",
+      "route": "/admin (mobile)",
+      "category": "accessibility / destructive UX",
+      "evidence": "evaluate_script returned 4 unlabeled <button> elements (40×32 px) at the iPhone 14 Pro viewport. Each has no text content, no aria-label, no title. Each is the per-row Delete-user destructive action.",
+      "reproSteps": [
+        "Emulate viewport 390x844x3 mobile.",
+        "Log in as admin. Navigate to /admin.",
+        "Inspect any row's destructive (Delete) action — element is `<button>` with `<svg>` child only, no accessible name."
+      ],
+      "rootCause": "AdminPage.tsx likely renders the trash-icon button without aria-label when in mobile layout. Desktop emits 'Delete user' as visible text within the button (uid pattern 11_26/11_35 etc.); mobile drops the text but doesn't add an aria-label fallback.",
+      "suggestedFix": "Add `aria-label={`Delete user ${email}`}` to the destructive button unconditionally — visible text is layout-dependent, aria-label should always be present.",
+      "screenshot": "screenshots/mobile_06_admin.png"
+    },
+    {
+      "id": "P2-01",
+      "severity": "P2",
+      "title": "ICP Ladder uses exact-match semantics despite '≥ N stars' UI copy",
+      "route": "/ (dashboard) → /leads filter",
+      "category": "feature-logic",
+      "evidence": "Dashboard ICP Ladder reads `Click a row to drill into leads with at least that many stars`. All 5 production leads return `icp_rating: 'Strong'`. Backend stats give: icp_min=4 → 5 leads; icp_min=3/2/1 → 0 leads each. Clicking the ≥1★ row returns 0 leads — violating the '≥' contract.",
+      "reproSteps": [
+        "Log in. On the dashboard, find the ICP Ladder widget.",
+        "Click the row labeled '≥ 1★' — page navigates to /leads?icp_min=1 and shows 0 leads.",
+        "Click '≥ 4★' — page shows 5 leads (the 'Strong'-rated cohort)."
+      ],
+      "rootCause": "Server `/server/api/stats` maps `icp_rating: 'Strong'` to a single bucket (`icp_min=4`), then the dashboard widget passes that same query parameter through to /leads. The /leads filter on the backend also evaluates the bucket as exact, not as `≥`.",
+      "suggestedFix": "Map ICP rating strings ('Weak', 'Moderate', 'Strong', 'Perfect') to a single numeric `icp_stars` integer in the leads table at ingestion. Then the /leads endpoint can compare with `>=` for an `icp_min` query. Both the stats counts and the filter behavior become consistent.",
+      "screenshot": "screenshots/desktop_04_leads_empty_state.png"
+    },
+    {
+      "id": "P2-02",
+      "severity": "P2",
+      "title": "Signal labels are case-sensitive: 'Compliance Need' and 'Compliance need' counted separately",
+      "route": "/ (dashboard, Top Score Drivers)",
+      "category": "data-quality",
+      "evidence": "Dashboard widget lists 'Compliance Need: 3' AND 'Compliance need: 2' as distinct top drivers. /server/api/stats returns both forms in the signals array. The user-visible effect is two duplicate-looking rows.",
+      "reproSteps": [
+        "Log in. On the dashboard, scroll to 'TOP SCORE DRIVERS'.",
+        "Observe two rows differing only by case of the second word."
+      ],
+      "rootCause": "Different dossier authors use different casing. functions/api/lib/parser.js stores attribution labels verbatim, and the stats aggregator groups by exact string match.",
+      "suggestedFix": "Canonicalize attribution labels at ingest time (lower-case the body, title-case for display) AND/OR add a fuzzy-merge step in the stats aggregator that collapses entries whose lower-cased forms match.",
+      "screenshot": "screenshots/desktop_01_dashboard.png"
+    },
+    {
+      "id": "P2-03",
+      "severity": "P2",
+      "title": "Duplicate Marco Lisboa records are not visually distinguished",
+      "route": "/, /leads, /leads/$leadId",
+      "category": "data-quality / UX",
+      "evidence": "Two leads with `email: 'marco.lisboa@aig.com'` (ROWID 31210000000141422 score 91, and 31210000000138079 score 82) appear in the leads list, top-opportunities, AI verdict headlines, and recent dossiers — each rendered with the same name, title and company. The only differentiator is `report_date` (2026-05-07 vs 2026-05-04), which is not surfaced in the row.",
+      "reproSteps": [
+        "Log in. Open /leads. Two rows for 'Marco Lisboa @ AIG' appear consecutively.",
+        "Hover/inspect — names, titles, companies are identical."
+      ],
+      "rootCause": "Schema permits multiple rows per email and the UI lists by ROWID rather than collapsing by email. No visual hint (date pill, version badge, archived state) indicates these are different point-in-time snapshots.",
+      "suggestedFix": "Either (a) collapse duplicates to the most recent and surface 'view history' to access prior versions, or (b) add a small report-date pill on each row when an email collides with another row. Option (a) maps better to user mental model — 'one lead per person'.",
+      "screenshot": "screenshots/desktop_03_leads_list.png"
+    },
+    {
+      "id": "P2-04",
+      "severity": "P2",
+      "title": "Parser accepts dimension scores exceeding their max (no validation)",
+      "route": "/upload → stored data",
+      "category": "feature-logic / data-quality",
+      "evidence": "Uploaded a stub dossier with `budget_score=22, budget_max=20`. The API persisted both values verbatim. Composite score 42 is mathematically the sum 5+5+10+22 (Fit+Intent+Timing+Budget). Dashboard 'Budget H/M/L' counters then operate on bad ratios.",
+      "reproSteps": [
+        "POST a dossier to /upload with a <div class='dim-row'> where dim-score numeric > dim-max numeric.",
+        "GET /server/api/leads/<new-id> — observe `budget_score: 22, budget_max: 20`."
+      ],
+      "rootCause": "functions/api/lib/parser.js extracts both as raw numbers without clamping. parseDossier has no invariant check that score ≤ max.",
+      "suggestedFix": "In parser.js, after extracting each dim, set `score = Math.min(score, max)` and log a warning. Surface the warning as a row-level `lead.parse_warnings` JSON field for admin visibility.",
+      "screenshot": "screenshots/desktop_07_upload_success.png"
+    },
+    {
+      "id": "P2-05",
+      "severity": "P2",
+      "title": "Pre-auth 401 polling: 8 calls to /baas/v1/.../project-user/current before login",
+      "route": "/app/ (login screen)",
+      "category": "noise / perceived-perf",
+      "evidence": "list_network_requests on a freshly-loaded /app/ shows 8x GET /baas/v1/project/31210000000133001/project-user/current returning 401. list_console_messages logs them as errors. Each one fires before the user has entered credentials.",
+      "reproSteps": [
+        "Open a private window. Navigate to /app/.",
+        "Open DevTools → Network. Observe 8 401 responses on the same URL before any user interaction."
+      ],
+      "rootCause": "The Catalyst Native Auth SDK appears to retry-poll `project-user/current` during its bootstrap. The app's React effect chain also probably hits the endpoint via useAuth's `loading` resolve path.",
+      "suggestedFix": "Debounce or single-shot the user-current check. If a 401 is the answer, stop polling — render the login screen. Add an explicit 'no session' state to useAuth.",
+      "screenshot": null
+    },
+    {
+      "id": "P2-06",
+      "severity": "P2",
+      "title": "Mobile: 67 of 100 interactive elements below WCAG 2.5.5 / Apple-HIG 44×44 minimum",
+      "route": "/ (mobile) and similar across other routes",
+      "category": "accessibility",
+      "evidence": "evaluate_script at 390×844 viewport: hamburger 36×36; 'Upload'/'Browse leads' CTAs 32px tall; 'View all hot' 16px tall; verdict-confidence band rows 12px tall. Total: 67 elements < 44px on min dimension.",
+      "reproSteps": [
+        "Emulate viewport 390x844x3 mobile.",
+        "Log in. Run a touch-target audit script (or use Chrome DevTools Lighthouse mobile mode)."
+      ],
+      "rootCause": "Tailwind utility classes use `py-1.5` (6px padding) and small text sizes for compactness. Sufficient for cursor, insufficient for fingertips.",
+      "suggestedFix": "Add a `@media (pointer: coarse)` block that bumps min-height and padding on all anchor and button elements within the SPA to ≥44px. Alternatively, enforce via a Tailwind plugin that adds `min-h-11 min-w-11` on `.touch-target` class applied to interactive elements.",
+      "screenshot": "screenshots/mobile_01_dashboard.png"
+    },
+    {
+      "id": "P2-07",
+      "severity": "P2",
+      "title": "Color contrast: active nav link 3.15:1 and 'View all' links 3.38:1 (needs 4.5:1)",
+      "route": "/ (all routes — header + dashboard widgets)",
+      "category": "accessibility",
+      "evidence": "Lighthouse color-contrast audit failed: '#5358ee on #171c3b = 3.15:1' for the active nav link; '#5358ee on #121824 = 3.38:1' for multiple .text-xs.text-primary mini-links.",
+      "reproSteps": [
+        "Open Chrome DevTools → Lighthouse. Run an Accessibility audit on the dashboard.",
+        "Color-contrast audit fails with the specific contrast ratios above."
+      ],
+      "rootCause": "The `--primary` token resolves to `#5358ee` which provides 3.15-3.38 against the app's dark surfaces. The 9-12pt mini-link sizes amplify the readability problem.",
+      "suggestedFix": "Bump `--primary` to a lighter shade (e.g. #8b8fff) for dark-theme text usage, OR keep the token and only use the darker primary for filled backgrounds. For active-state nav, increase font weight or add an underline for non-color affordance.",
+      "screenshot": "screenshots/desktop_01_dashboard.png"
+    },
+    {
+      "id": "P2-08",
+      "severity": "P2",
+      "title": "No edit, re-score, export, or share controls on lead detail — only Delete",
+      "route": "/leads/$leadId",
+      "category": "UX / feature-gap",
+      "evidence": "Snapshot of lead detail page lists exactly these buttons: Sign out (in nav), Back to leads, Delete, and three Copy-email-to-clipboard buttons. No Edit, Re-score, Export, Share, or Download controls exist.",
+      "reproSteps": [
+        "Log in. Navigate to /leads/31210000000141422.",
+        "Inspect the page chrome and side panel."
+      ],
+      "rootCause": "Lead detail is treated as a read-only artifact (the dossier). Corrections like P2-04 above (budget>max) can't be fixed without deleting and re-uploading.",
+      "suggestedFix": "At minimum add Download (the original HTML) and a re-upload-as-new-version flow. Editing the score directly is intentional to avoid undermining the AI grader, but admins should have a 'flag for re-score' action.",
+      "screenshot": "screenshots/desktop_05_lead_detail.png"
+    },
+    {
+      "id": "P2-09",
+      "severity": "P2",
+      "title": "Dossier iframe content overflows 13px horizontally on mobile",
+      "route": "/leads/$leadId (mobile)",
+      "category": "responsive",
+      "evidence": "evaluate_script: iframe width 356px, inner document scrollWidth 369px → 13px horizontal scroll inside the iframe. Outer page does not scroll horizontally.",
+      "reproSteps": [
+        "Emulate viewport 390x844x3 mobile.",
+        "Navigate to /leads/31210000000141422.",
+        "Swipe left/right inside the dossier — content scrolls horizontally."
+      ],
+      "rootCause": "Dossier HTML uses fixed-width tables or wide unbreakable strings (long company names, URLs). The iframe content stylesheet doesn't override with `overflow-wrap: anywhere` or shrink-to-fit table layouts.",
+      "suggestedFix": "Inject a mobile-aware stylesheet into the dossier srcdoc (similar to how login-iframe.css is injected for the Catalyst signin iframe) that enforces `overflow-wrap: anywhere`, `table-layout: fixed; word-break: break-word;` and `img, table { max-width: 100%; }`.",
+      "screenshot": "screenshots/mobile_04_lead_detail.png"
+    },
+    {
+      "id": "P2-10",
+      "severity": "P2",
+      "title": "No semantic <h1> for lead name on detail page",
+      "route": "/leads/$leadId",
+      "category": "accessibility",
+      "evidence": "Outer SPA shell renders the lead name as StaticText (likely a styled <div>), not as an <h1>. The only headings on the page live inside the embedded dossier iframe. Screen-reader landing experience: user hears the nav, then a flat string of attributes before any heading.",
+      "reproSteps": [
+        "Navigate to /leads/31210000000141422.",
+        "Run `document.querySelectorAll('h1').length` — outer document returns 0 (h1s are inside the iframe)."
+      ],
+      "rootCause": "LeadDetailPage renders the name with display typography classes but doesn't use an <h1>.",
+      "suggestedFix": "Wrap the lead name in `<h1 className='sr-only'>` (or styled) so screen readers and document-outline tools pick it up. Demote/promote the iframe's internal h1 if necessary to maintain a clean outline.",
+      "screenshot": "screenshots/desktop_05_lead_detail.png"
+    },
+    {
+      "id": "P2-11",
+      "severity": "P2",
+      "title": "Slow-3G load >60s with no visible skeleton/loader",
+      "route": "/ (Slow 3G + 4x CPU throttling)",
+      "category": "perf / UX",
+      "evidence": "Under Slow 3G + 4x CPU throttling, the dashboard text eventually appears, but a `wait_for` for 'TOTAL DOSSIERS' timed out after 60s. evaluate_script after timeout showed `hasLoaderSpinner: false` while the dashboard body was already partially rendered.",
+      "reproSteps": [
+        "Open DevTools → Network → Slow 3G + 4x CPU. Reload /.",
+        "Observe: header renders fast, then a long pause with no spinner, then widgets fill in one-by-one."
+      ],
+      "rootCause": "DashboardPage uses TanStack Query without skeleton placeholders for the widget panels. While the /stats and /leads requests are in flight, the widgets render empty cards (with their headings) but no loading state per panel.",
+      "suggestedFix": "Add per-widget Skeleton components (the project already has `@/components/ui/skeleton`). Render skeleton rows inside each widget while `query.isLoading` is true. This makes perceived performance better on slow connections without changing the unthrottled experience.",
+      "screenshot": "screenshots/slow3g_03_dashboard_60s.png"
+    },
+    {
+      "id": "P3-01",
+      "severity": "P3",
+      "title": "Logo aria-label 'Go to dashboard' mismatches visible text",
+      "route": "all routes",
+      "category": "accessibility",
+      "evidence": "Lighthouse label-content-name-mismatch failed on the logo link `<a aria-label='Go to dashboard'>Enterprise Lead Intelligence and Scoring System</a>`. Speech users hear 'Go to dashboard' but voice-control users saying 'Click Enterprise...' may not match.",
+      "reproSteps": [
+        "Open the dashboard. Inspect the logo link — aria-label differs from textContent."
+      ],
+      "rootCause": "AppShell.tsx sets aria-label to clarify the action but the visible text describes the product instead. Either is fine alone; together they violate WCAG 2.5.3 Label in Name.",
+      "suggestedFix": "Drop `aria-label` and let the visible product name serve as the accessible name, OR move the product name to a separate non-interactive element and keep the logo as 'Home/Dashboard' only.",
+      "screenshot": null
+    },
+    {
+      "id": "P3-02",
+      "severity": "P3",
+      "title": "Create-user dialog inputs missing autocomplete + id/name",
+      "route": "/admin (Create user dialog)",
+      "category": "a11y / autofill",
+      "evidence": "Console issue panel: 'An element doesn't have an autocomplete attribute' and 'A form field element should have an id or name attribute'. Browser password managers and address-autofill will not pre-fill the new-user form.",
+      "reproSteps": [
+        "Log in as admin. Open /admin.",
+        "Click 'Create user' — DevTools Issues tab flags both warnings."
+      ],
+      "rootCause": "CreateUserDialog.tsx uses controlled inputs but doesn't pass `name` or `autoComplete` attributes.",
+      "suggestedFix": "Add `name='given-name'/'family-name'/'email'` and `autoComplete='given-name'/'family-name'/'email'` on the respective inputs.",
+      "screenshot": "screenshots/desktop_09_admin_create_user_dialog.png"
+    },
+    {
+      "id": "P3-03",
+      "severity": "P3",
+      "title": "Admin 'Provider' and 'Last sign-in' columns always show — (data not wired)",
+      "route": "/admin",
+      "category": "feature-gap",
+      "evidence": "All 4 user rows display '—' for both columns on desktop and mobile.",
+      "reproSteps": ["Navigate to /admin. Inspect any row's Provider and Last sign-in cells."],
+      "rootCause": "Catalyst Native Auth's project-user endpoint exposes neither provider nor last-sign-in. The UI added columns in anticipation of those fields.",
+      "suggestedFix": "Either hide the columns until the data source exists, or pull last-sign-in from an audit-log table populated by an event-listener on auth.",
+      "screenshot": "screenshots/desktop_08_admin.png"
+    },
+    {
+      "id": "P3-04",
+      "severity": "P3",
+      "title": "Timezone inconsistency: CREATEDTIME (IST) vs updated_at (UTC) on lead rows",
+      "route": "/server/api/leads/<id> response",
+      "category": "data-quality",
+      "evidence": "Newly uploaded lead: CREATEDTIME '2026-05-15 00:11:45:798', updated_at '2026-05-14 18:41:45'. The two fields are 5h30m apart, exactly the IST offset, despite representing approximately the same moment.",
+      "reproSteps": ["Upload a dossier. GET /server/api/leads/<new-id>. Compare CREATEDTIME and updated_at."],
+      "rootCause": "Catalyst Data Store's auto CREATEDTIME is recorded in the project's configured DC timezone (IN → IST). The application sets `updated_at` via `new Date().toISOString()` (UTC). No coercion to a single timezone.",
+      "suggestedFix": "Convert all timestamps to UTC ISO-8601 in API responses. Render local times only at the client layer using `Intl.DateTimeFormat`.",
+      "screenshot": null
+    },
+    {
+      "id": "P3-05",
+      "severity": "P3",
+      "title": "Possible smart-quote double-escaping on dossier objection-handler quotes",
+      "route": "/leads/$leadId (dossier iframe)",
+      "category": "data-quality",
+      "evidence": "Subagent flagged 4 quote strings rendered with what appears to be doubled curly quotes (e.g. '\"\"We're a SailPoint shop globally\"\"') in the objection-handler section. Needs visual confirmation; suggests HTML entity escape during template rendering.",
+      "reproSteps": ["Navigate to /leads/31210000000141422. Scroll to objection-handler quotes section. Inspect quote characters."],
+      "rootCause": "Dossier pipeline likely substitutes `\"` → `\"` → `&ldquo;` then re-encodes again somewhere downstream.",
+      "suggestedFix": "Audit the dossier generator's HTML escaping pipeline — ensure quotes are encoded exactly once. Add a snapshot test that fails on `\"\"` or `''` in dossier HTML output.",
+      "screenshot": "screenshots/desktop_05_lead_detail.png"
+    },
+    {
+      "id": "P3-06",
+      "severity": "P3",
+      "title": "Modern HTTP not used on some critical assets (~110ms LCP savings)",
+      "route": "/ (perf insight)",
+      "category": "perf",
+      "evidence": "Performance trace LCPBreakdown insight: 'ModernHTTP' flag — estimated FCP 40ms, LCP 110ms savings if HTTP/2 or HTTP/3 were used uniformly.",
+      "reproSteps": ["Run Chrome performance trace on /. Inspect network panel for protocol column — any 'http/1.1' for app assets."],
+      "rootCause": "Catalyst Slate static hosting may not negotiate HTTP/2 for all asset types.",
+      "suggestedFix": "Verify Slate edge config supports HTTP/2 ALPN. If a CDN sits in front, confirm it doesn't downgrade. Re-trace after change to confirm.",
+      "screenshot": null
+    },
+    {
+      "id": "P3-07",
+      "severity": "P3",
+      "title": "Cache headers leave ~289KB of repeat-visit savings on the table",
+      "route": "/ (perf insight)",
+      "category": "perf",
+      "evidence": "Performance trace Cache insight: 'estimated wasted bytes: 288.9 kB' for repeat visits, 100ms LCP savings achievable.",
+      "reproSteps": ["Run perf trace. Inspect Cache insight."],
+      "rootCause": "Some hashed assets are served with insufficient max-age. Slate's default cache TTL may not match the immutable hashed nature of Vite's output.",
+      "suggestedFix": "For files matching `assets/*-[hash].{js,css}`, set `Cache-Control: public, max-age=31536000, immutable` via Slate route headers config.",
+      "screenshot": null
+    },
+    {
+      "id": "P3-08",
+      "severity": "P3",
+      "title": "Forced reflow detected (~103ms range on initial render)",
+      "route": "/ (perf insight)",
+      "category": "perf",
+      "evidence": "Performance trace ForcedReflow insight relevant trace bounds 1318806958531µs–1318807061228µs (~103ms range) on landing navigation.",
+      "reproSteps": ["Run perf trace on /. Open ForcedReflow insight."],
+      "rootCause": "Likely the AuthGate.tsx ResizeObserver / iframe measurement code paths cause synchronous layout reads. Could also be Recharts initial measurement.",
+      "suggestedFix": "Move geometry reads into `requestAnimationFrame` callbacks, batch DOM writes, prefer `ResizeObserver`/`IntersectionObserver` over direct measurement.",
+      "screenshot": null
+    },
+    {
+      "id": "P3-09",
+      "severity": "P3",
+      "title": "Large DOM size flagged on dashboard (~17 widgets + many sub-elements)",
+      "route": "/",
+      "category": "perf",
+      "evidence": "Performance trace DOMSize insight present with non-empty trace bounds. Dashboard renders 17+ widgets, each with several text nodes, chart groups, and links.",
+      "reproSteps": ["Run perf trace on /. DOMSize insight has data."],
+      "rootCause": "DashboardPage renders all widgets eagerly. No virtualization or lazy-mount for below-fold panels.",
+      "suggestedFix": "Use `IntersectionObserver`-based lazy mounting for below-fold widgets (only render once they're within ~1 viewport of the scroll position). Cuts initial DOM size by ~50-60%.",
+      "screenshot": null
+    }
+  ],
+  "positives": [
+    "Core Web Vitals on landing are excellent (LCP 461ms, CLS 0.00, TTFB 70ms) on unthrottled connection.",
+    "Lighthouse: a11y 96, best-practices 100, SEO 100 — strong baseline.",
+    "Empty filter result page (/leads?icp_min=5) shows a well-designed empty state with 'Clear all filters' and 'Upload dossier' CTAs.",
+    "Create-user form validation: proper aria-invalid='true' with descriptive 'Required'/'Invalid email' bindings.",
+    "Mobile layout pivots from table to card list cleanly; no outer horizontal scroll at 390px.",
+    "Hamburger Sheet drawer works correctly: opens, traps focus, closes on Escape.",
+    "Admin role-gating via AdminGuard component: non-admins get a soft-redirect with explanation card.",
+    "Login flow handles the multi-step Catalyst iframe (email → password) without visible jank.",
+    "Upload→parse→display round-trip works end-to-end; new dossier appears immediately in dashboard aggregates."
+  ]
+}

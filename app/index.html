@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Enterprise Lead Intelligence and Scoring System</title>
+    <meta
+      name="description"
+      content="Searchable dashboard for ELISS lead dossiers with collective sales intelligence."
+    />
+    <meta name="theme-color" content="#0a0a0e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ELISS" />
+    <link rel="apple-touch-icon" href="/app/logo.svg" />
+    <!-- Catalyst Web SDK is loaded + initialized by src/lib/catalyst-client.ts.
+         The auto-injected /__catalyst/sdk/init.js is intentionally skipped because
+         it ships api_domain:"" on Web Client Hosting, which yields broken URLs. -->
+
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

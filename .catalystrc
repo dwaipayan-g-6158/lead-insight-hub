@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "project": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "31210000000133001",
+      "name": "lead-insight-hub",
+      "domain": {
+        "id": "50042133518",
+        "name": "lead-insight-hub-60066539659.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60066539659",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}

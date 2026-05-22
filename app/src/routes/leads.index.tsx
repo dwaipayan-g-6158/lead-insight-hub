@@ -1,0 +1,21 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
+import { LeadsListPage } from "@/components/LeadsListPage";
+
+const searchSchema = z.object({
+  q: z.string().optional(),
+  tier: z.enum(["HOT", "WARM", "COOL", "COLD"]).optional(),
+  company: z.string().optional(),
+  min: z.number().int().min(0).max(100).optional(),
+  max: z.number().int().min(0).max(100).optional(),
+  signal: z.string().optional(),
+  signal_type: z.string().optional(),
+  confidence: z.enum(["high", "medium", "low", "unknown"]).optional(),
+  icp_min: z.number().int().min(1).max(5).optional(),
+  mine: z.boolean().optional(),
+});
+
+export const Route = createFileRoute("/leads/")({
+  validateSearch: (input) => searchSchema.parse(input),
+  component: LeadsListPage,
+});

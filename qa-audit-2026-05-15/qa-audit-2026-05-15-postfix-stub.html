@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELISS Dossier — qa-audit-2026-05-15 postfix verification stub</title>
+</head>
+<body>
+<div class="brand-mark">ELISS v0.0.1</div>
+<div class="header-date">2026-05-15</div>
+<div class="lead-name">qa-audit-2026-05-15 Postfix Verify</div>
+<div class="lead-sub">QA Postfix at qa-audit-2026-05-15-postfix &bull; qa-audit-2026-05-15-postfix@example.invalid</div>
+<div class="verdict-score">42</div>
+<div class="verdict-tier">COLD</div>
+<div class="verdict-headline">QA postfix verification — should sanitize script + clamp budget</div>
+<div class="verdict-insight">Email body says: contact <rep name> for follow up.</div>
+<div class="verdict-next">Delete this row after verifying fixes.</div>
+<div class="conf-label">LOW Confidence</div>
+<div class="icp-label">ICP: Weak</div>
+<div class="icp-reason">Postfix verification record.</div>
+<div class="exec-brief">Postfix executive brief. Compliance need.</div>
+<div class="dim-row"><span class="dim-name">Fit</span><span class="dim-score">5</span><span class="dim-max">25</span><span class="dim-conf">LOW</span></div>
+<div class="dim-row"><span class="dim-name">Intent</span><span class="dim-score">5</span><span class="dim-max">25</span><span class="dim-conf">LOW</span></div>
+<div class="dim-row"><span class="dim-name">Timing</span><span class="dim-score">10</span><span class="dim-max">30</span><span class="dim-conf">LOW</span></div>
+<div class="dim-row"><span class="dim-name">Budget</span><span class="dim-score">22</span><span class="dim-max">20</span><span class="dim-conf">LOW</span></div>
+<div class="attr-leg-row">
+  <span class="attr-leg-cat">Compliance Need</span>
+  <span class="attr-leg-pts">1</span>
+  <span class="attr-leg-evidence">Postfix attribution row.</span>
+</div>
+<div class="attr-leg-row">
+  <span class="attr-leg-cat">Compliance need</span>
+  <span class="attr-leg-pts">1</span>
+  <span class="attr-leg-evidence">Casing should collapse with above.</span>
+</div>
+<!-- These two MUST be stripped by sanitizeDossierHtml on the server. -->
+<script>document.body.dataset.xssMarker = "PWNED";</script>
+<div onclick="alert(1)">XSS attribute should be stripped</div>
+<iframe src="https://example.com/evil"></iframe>
+</body>
+</html>

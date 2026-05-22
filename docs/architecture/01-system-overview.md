@@ -101,7 +101,7 @@ sequenceDiagram
     Job->>DS: UPDATE stage=rendering, tokens_input/output
     Job->>Job: subprocess generate_report.py → HTML
     Job->>DS: UPDATE stage=lint
-    Job->>Job: depth_lint(html); retry once if blocking
+    Job->>Job: depth_lint(html) — retry once if blocking
     Job->>DS: UPDATE stage=upload
     Job->>ST: putObject(html)
     Job->>DS: INSERT leads (composite_score, tier, ...)<br/>INSERT lead_signals[]<br/>UPDATE dossier_requests<br/>(status=succeeded, lead_id, completed_at)

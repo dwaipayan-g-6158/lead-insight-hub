@@ -76,7 +76,9 @@ def _extract_dossier_json(content_blocks):
 
 
 def synthesize(intake, preflight_data, rr_baseline, *, rr_degraded=False,
-               rr_degradation_reason=None, model=None, max_tokens=None):
+               rr_degradation_reason=None, model=None, max_tokens=None,
+               web_search_max_uses=None, thinking_enabled=False,
+               thinking_budget=0):
     """Call Anthropic with web_search; return (dossier_dict, usage_dict).
 
     Args:
@@ -110,6 +112,7 @@ def synthesize(intake, preflight_data, rr_baseline, *, rr_degraded=False,
 
     model = (model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL).strip()
     max_tokens = max_tokens or DEFAULT_MAX_TOKENS
+    web_uses = WEB_SEARCH_MAX_USES if web_search_max_uses is None else int(web_search_max_uses)
 
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(
@@ -131,24 +134,44 @@ def synthesize(intake, preflight_data, rr_baseline, *, rr_degraded=False,
         {
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": WEB_SEARCH_MAX_USES,
+            "max_uses": web_uses,
         }
     ]
+
+    # Extended thinking is opt-in via the super-admin settings. The Messages
+    # API requires max_tokens > budget_tokens and forbids a custom temperature
+    # while thinking is on (we never set temperature, so that holds). A budget
+    # below 1024 is rejected by the API, so we gate on it here defensively.
+    stream_kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system_block,
+        "tools": tools,
+        "messages": [{"role": "user", "content": user_prompt}],
+    }
+    if thinking_enabled and int(thinking_budget) >= 1024 and int(thinking_budget) < max_tokens:
+        stream_kwargs["thinking"] = {
+            "type": "enabled",
+            "budget_tokens": int(thinking_budget),
+        }
 
     client = Anthropic(api_key=api_key)
     # Streaming required for any max_tokens > ~8K (the SDK rejects non-
     # streaming calls that could in theory exceed 10 minutes).
     # get_final_message blocks until completion and returns the same shape
     # as create() would have produced.
-    with client.messages.stream(
-        model=model,
-        max_tokens=max_tokens,
-        system=system_block,
-        tools=tools,
-        messages=[{"role": "user", "content": user_prompt}],
-    ) as stream:
+    with client.messages.stream(**stream_kwargs) as stream:
         response = stream.get_final_message()
 
+    # Truncation guard: a max_tokens stop means the dossier JSON is cut off, and
+    # _extract_dossier_json would silently fall through to a small nested object
+    # (→ near-empty "Unknown Lead" dossier with blank sections). Fail loudly so
+    # the lint-retry / failure path runs instead of storing garbage.
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise ValueError(
+            f"synthesis truncated: stop_reason=max_tokens at {max_tokens} tokens — "
+            "dossier JSON incomplete; raise light_max_tokens"
+        )
     dossier = _extract_dossier_json(response.content)
     dossier = _apply_rr_company_enrichment(dossier, rr_baseline)
     usage = {

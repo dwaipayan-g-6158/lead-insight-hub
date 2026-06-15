@@ -53,6 +53,10 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif !important;
   margin: 0 !important;
   padding: 0 !important;
+  /* Stop iOS Safari from inflating text in standalone-PWA / landscape — pairs
+     with the 16px inputs below to keep the email→password step at one scale. */
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
 }
 
 /* Outer wrappers — flatten Catalyst's white card */
@@ -257,7 +261,12 @@ input.textbox,
      stack as body so the typed text matches the rest of the page (the
      ".username" readonly display above uses the body stack). */
   font-family: inherit !important;
-  font-size: 14px !important;
+  /* 16px (not 14) is the iOS Safari threshold: a focused <input> below 16px
+     triggers an auto-zoom that, in a standalone PWA, persists across the
+     email→password iframe navigation and makes the password step look
+     "zoomed in". 16px disables that zoom without the a11y cost of
+     maximum-scale/user-scalable=no on the viewport. */
+  font-size: 16px !important;
   font-weight: 400 !important;
   padding: 12px 14px !important;
 }
@@ -284,9 +293,9 @@ input.textbox::placeholder,
 .bluetext,
 .notyou {
   color: var(--liw-primary) !important;
-  /* Matched to body input/text 14 px for visual uniformity with the email
-     display + password input on the same screen. */
-  font-size: 14px !important;
+  /* Matched to the 16 px input/email-display on the same screen for visual
+     uniformity (inputs are 16 px to defeat iOS focus-zoom). */
+  font-size: 16px !important;
   font-weight: 500 !important;
   cursor: pointer;
   background: transparent !important;
@@ -295,13 +304,14 @@ input.textbox::placeholder,
 /* The "remembered email" row Catalyst renders above the password input on
    the password step: <div class="hellouser"><div class="username">… email
    …</div><span class="Notyou">Change</span></div>. Catalyst ships .username
-   at 16 px / weight 500, which is 2 px LARGER AND visibly bolder than the
-   password input below. Match font-size + font-weight + font-family to the
-   input so the two lines optically read as one consistent block. */
+   at weight 500, visibly bolder than the password input below. Match
+   font-size (16 px) + font-weight + font-family to the input so the two
+   lines optically read as one consistent block. */
 .hellouser .username,
 .username {
   font-family: inherit !important;
-  font-size: 14px !important;
+  /* 16px to read as one optical block with the 16px password input below. */
+  font-size: 16px !important;
   font-weight: 400 !important;
   line-height: 1.4 !important;
   color: var(--liw-text) !important;
@@ -700,8 +710,11 @@ body {
 button.btn,
 #enableotpoption,
 #otp_container .textbox_actions {
+  /* No `transform` here on purpose — animating transform on these bordered
+     rows re-rasterizes their 1px borders/divider each frame (the reported
+     flicker). Keep opacity for the step-swap settle and border-color/shadow
+     for smooth focus; none of those touch the raster grid. */
   transition:
-    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.25s ease,
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -953,8 +966,13 @@ button.btn,
   border-color: var(--liw-primary) !important;
   box-shadow: 0 0 0 3px rgba(124, 111, 240, 0.18) !important;
 }
-/* User info row on the recovery page ("dwaipayan.g@zohotest.com  Change") */
-#recovery_user_info.user_info {
+/* User info row on the recovery page ("dwaipayan.g@zohotest.com  Change").
+   Gated with :not([style*="display: none"]) — clicking "Change" makes Catalyst
+   set this row's inline `display: none` (to swap in the editable email input
+   below). The old unconditional `display: flex !important` overrode that, so
+   the read-only row stayed put, the editable input never surfaced, and "Change"
+   dead-ended. Yielding to Catalyst's inline display lets the swap happen. */
+#recovery_user_info.user_info:not([style*="display: none"]) {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
@@ -982,14 +1000,18 @@ button.btn,
   white-space: nowrap !important;
 }
 /* On the recovery doc, Catalyst renders BOTH an editable login_id input
-   (rect 0×0×0×0 by default — supposed to be invisible) and the menutext
-   display above. Our flex/box-sizing tweaks sometimes resurrect the
-   editable input as a visible second row. Hide it only inside the
-   recovery doc so the signin doc's email input is unaffected. */
-.recovery_box #login_id_container,
-.recovery_box #login_id_div,
-.recovery_box #login_id,
-.recovery_box #login_id_container_form > .searchparent {
+   (kept collapsed via inline `display: none` by default) and the menutext
+   display above. Our flex/box-sizing tweaks sometimes resurrected the
+   editable input as a visible second row, so we hid it.
+
+   But clicking "Change" makes Catalyst flip #login_id_container to inline
+   `display: block` to let the user edit the email — so the hide MUST be
+   conditional: only suppress the container while Catalyst has NOT revealed
+   it. Gating on `:not([style*="display: block"])` keeps the default view
+   clean yet lets "Change" surface the input (previously a dead-end).
+   #login_id lives inside #login_id_container, so hiding the container hides
+   the input too — no separate #login_id rule needed. */
+.recovery_box #login_id_container:not([style*="display: block"]) {
   display: none !important;
 }
 #recovery_user_info .change_user {

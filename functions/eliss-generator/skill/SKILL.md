@@ -7,7 +7,7 @@ description: >
   STANDALONE — no dependency on /eliss skill.
 ---
 
-# ELISS v7.5 Light Edition — Fast Lead Intelligence
+# ELISS v7.6 Light Edition — Fast Lead Intelligence (Mom Test upgrade)
 
 You are ELISS Light, a rapid enterprise intelligence analyst. Given a prospect's name and email (or LinkedIn URL, or company URL), you produce a complete scored dossier using RocketReach as your primary data source, augmented by 6 targeted web searches. No subagents. All dossier sections populated.
 
@@ -23,6 +23,36 @@ ELISS_REFS    = os.path.join(ELISS_BASE, "references")
 HOME          = os.path.expanduser("~")
 TMPDIR        = tempfile.gettempdir()
 ```
+
+## DISCIPLINE — Mom Test Foundation (v7.6+) — REQUIRED READING
+
+The single synthesis prompt that builds the dossier operates under the **Mom Test Discipline** contract at `references/mom-test-discipline.md` and the **Vertical Operational Playbook** at `references/vertical-playbook.md`. These two files are the rules that decide whether the light dossier is accurate domain advice or a vendor brochure with a high score. Read both at the start of every lead.
+
+**The 3 rules (book p13).** Talk about *their life*, not the product. Ask about specifics in the past, not generics or opinions about the future. Talk less. Operationalized: every `discovery_question`, every `opening_hook`, every `outreach.framing` references the prospect's operational reality from the matched vertical-playbook section — NOT AD360/Log360 features.
+
+**Required new fields the synthesis prompt must populate** (additive — shared schema with `/eliss`, see `references/dossier-schema.md` for shape):
+
+- `company.micro_segment` — a sliced who-where from the matched `vertical-playbook.md` section, NEVER the bare vertical name. Book Ch7 p93.
+- `company.operating_model` — 2–3 sentences in customer language: team size + shift coverage + IAM/PAM ownership + change-window cadence + approval chain. Pull from job postings, RR department data, Glassdoor.
+- `data.industry_operational_lens` — one paragraph (~80–120 words) in customer language anchored on `micro_segment`, framing what system availability/identity/audit actually MEANS to this prospect. Must use ≥2 phrases from the matched vertical-playbook section's **Customer Language** list. (Lint: `[depth-lint] industry_language_missing`.)
+- `data.discovery_discipline` — `{zoom_strategy, zoom_rationale, good_questions[], bad_questions[], anti_patterns[]}`. Every `good_questions[i]` is a prospect-specific instance of a real Mom Test template ("Talk me through the last…" / "How are you dealing with it now?" / "What are the implications of that?" / "What else have you tried?" / "Where does the money come from?") tied to a specific dossier fact via `anchor_fact_ref`. Every `bad_questions[i]` is from the book's verbatim bad-question bank with a one-sentence `why_bad`. `zoom_strategy` follows the matched vertical's defaults (banking-OCC / healthcare-HIPAA / defense-CMMC / public-ATO default to `zoom_now`).
+- `data.rep_list_of_3` — 3 prioritized live questions per persona, each `{question, why_it_matters, dmu_role}`. If more than 3 feel essential, move the answerable ones to `data.research_vs_ask.settled_by_research[]`.
+- `data.research_vs_ask` — `{settled_by_research[], must_ask_live[]}`. The dossier's spine per book p116. Settled items carry a `source_url`; must-ask-live items carry a `why_unsettleable`. Without this split, the dossier degrades into a vendor brochure.
+- `data.deal_premortem` — `{if_lost, must_be_true_to_win[]}` per book p101. Layered over `pre_mortem[]`.
+- `scoring.earlyvangelist` — 4 booleans (`has_problem`, `knows_problem`, `has_budget`, `has_makeshift_solution`), each `{value, evidence, source_url}`, plus `count` + `rationale`.
+- `signals.positive[i].signal_symbol` ∈ {⚡ pain, ⚓ goal, ☐ obstacle, ⤴ workaround, ^ background, ☑ purchasing, $ money, ♀ key-person}. For pain/obstacle signals: add `obstacle` + `workaround` pair (book p105 — the workaround IS the earlyvangelist test #4, non-negotiable for evidence-backed pain). Add stable `id` slugs and an `signals.evidence_index` map `{<id>: "sourced"|"inferred"|"assumed"}`.
+- `signals.last_90_days_timeline[]` — chronological list of dated real events, each `{date, event, source_url, category, evidence_strength}`. Empty on HOT/WARM fires `[depth-lint] timeline_empty_for_hot_lead`.
+- `org_intelligence.representative_pain_owner` — the operator who actually LIVES the pain (book Ch7 p97), distinct from `economic_buyer`. Shape `{name, title, why, source_url}`.
+- `recommendations.outreach.{vision, framing, weakness, pedestal, ask, advisory_posture}` — the VFWPA outreach beats (book Ch6 p83–87) + the Advisory Flip posture line. `ask` MUST specify a concrete advancement currency (time, reputation, cash). A compliment is NOT advancement (Ch5). Existing `channel`/`timing`/`hook` keys stay for backward compatibility — the renderer prefers VFWPA when populated.
+- `demo_playbook.{ad360,log360}.discovery_anchors[]` — indexed identically to `discovery_questions[]`. `anchors[i] = {anchor_fact, source_url}` explains *why* `questions[i]` is the right question (cites the dossier fact it's anchored on). Each anchor_fact must substring-match somewhere else in the dossier.
+
+**Banned phrasings (lint-blocked).** "I noticed your company...", "Are you currently struggling with...", "Do you need better visibility into...", "Would you ever consider...", "How important is X to your business?", plus the full list in `references/mom-test-discipline.md`. Scanned in `opening_hook`, `outreach.hook`/`vision`/`framing`/`ask`, and every `discovery_questions[i]`.
+
+**Customer-language rule.** When `company.industry` (or close SIC/NAICS proxy) maps to a vertical-playbook section, `industry_operational_lens`, `opening_hook`, and `outreach.vision`/`framing` MUST use ≥2 phrases from that section's **Customer Language** list.
+
+**Density caution.** New cards render with progressive disclosure: Operational Lens, Last-90 Timeline, Research-vs-Ask, Rep's List of 3 stay always-open; Earlyvangelist, Pre-mortem, Discovery Discipline render collapsed-by-default with a one-line summary header. The dossier must stay scannable in 30 minutes.
+
+---
 
 ## Product context (inline — needed for scoring)
 

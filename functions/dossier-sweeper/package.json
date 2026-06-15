@@ -1,0 +1,12 @@
+{
+  "name": "dossier-sweeper",
+  "version": "1.0.0",
+  "description": "Cron-driven global self-heal sweep for orphaned dossier_requests (resumes from checkpoint or fails stale rows). Engine-agnostic twin of api sweepStaleRunning().",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}

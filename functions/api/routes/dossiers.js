@@ -75,8 +75,40 @@ function parseCatalystTimestamp(s) {
   return Number.isNaN(ms) ? null : ms;
 }
 
+// Read the singleton generation settings (best-effort; {} on miss). Used by
+// the self-healing sweep to decide resume-vs-fail without a full merge — only
+// the resume toggles + caps are needed here.
+async function readGenSettings(app) {
+  try {
+    const zcql = app.zcql();
+    const row = await selectOne(
+      zcql,
+      `SELECT settings_json FROM app_settings ORDER BY ROWID ASC`,
+      "app_settings",
+    );
+    if (!row || !row.settings_json) return {};
+    const obj = JSON.parse(row.settings_json);
+    return obj && typeof obj === "object" ? obj : {};
+  } catch (e) {
+    console.warn("readGenSettings failed (using defaults):", e.message);
+    return {};
+  }
+}
+
+// Catalyst booleans / ints come back over ZCQL as native or stringified —
+// normalize both checkpoint_ready shapes to a real boolean.
+function truthy(v) {
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+
 // Sweep rows that haven't been touched (MODIFIEDTIME) in STALE_AFTER_MS.
-// Idempotent — running it on the same row twice is a no-op.
+// SELF-HEALING: a stale row that has a durable checkpoint (checkpoint_ready,
+// set only by the generators once the expensive work is on Stratus) and resume
+// attempts left is RESUMED — a fresh job finishes it from the checkpoint —
+// instead of being failed. So even a hard 900s kill that died before the
+// generator could self-dispatch never wastes the tokens already spent. Rows
+// with no checkpoint, attempts exhausted, or the feature disabled fall back to
+// the original fail behavior. Idempotent.
 async function sweepStaleRunning(app, userId) {
   const zcql = app.zcql();
   const datastore = app.datastore();
@@ -84,18 +116,62 @@ async function sweepStaleRunning(app, userId) {
   // a row that's fresh enough, everything after it is fresher → break.
   const rows = await selectAll(
     zcql,
-    `SELECT ROWID, MODIFIEDTIME FROM dossier_requests ` +
+    `SELECT ROWID, MODIFIEDTIME, checkpoint_ready, resume_attempts, resume_target ` +
+      `FROM dossier_requests ` +
       `WHERE user_id = '${esc(userId)}' AND status IN ('pending', 'running') ` +
       `ORDER BY MODIFIEDTIME ASC`,
     "dossier_requests",
   );
   if (!rows.length) return 0;
+
+  const settings = await readGenSettings(app);
+  const heavyResume = settings.heavy_auto_resume_enabled !== false; // default on
+  const lightResume = settings.light_auto_resume_enabled !== false; // default on
+  const heavyMax = Number(settings.heavy_resume_max_attempts ?? 4);
+  const lightMax = Number(settings.light_resume_max_attempts ?? 4);
+  const jobpoolId = process.env.ELISS_GEN_JOBPOOL_ID;
+
   const now = Date.now();
   let swept = 0;
   for (const r of rows) {
     const mtMs = parseCatalystTimestamp(r.MODIFIEDTIME);
     if (mtMs == null) continue;
     if (now - mtMs <= STALE_AFTER_MS) break; // sorted ASC — rest are fresher
+
+    const target = r.resume_target || null;
+    const attempts = Number(r.resume_attempts || 0);
+    const isHeavy = target === "eliss-heavy-generator";
+    const resumeEnabled = isHeavy ? heavyResume : lightResume;
+    const maxAttempts = isHeavy ? heavyMax : lightMax;
+
+    // Self-heal: resume from checkpoint rather than failing.
+    if (jobpoolId && truthy(r.checkpoint_ready) && target && resumeEnabled && attempts < maxAttempts) {
+      try {
+        const shortName = `er_${String(r.ROWID).slice(-12)}`.slice(0, 20);
+        await app.jobScheduling().job().submitJob({
+          jobpool_id: jobpoolId,
+          job_name: shortName,
+          target_type: "Function",
+          target_name: target,
+          // request_id stays a STRING — bigint ROWID precision (see memory).
+          params: { request_id: String(r.ROWID), resume: "1", resume_reason: "sweep" },
+        });
+        await datastore.table("dossier_requests").updateRow({
+          ROWID: r.ROWID,
+          stage: "resuming",
+          resume_attempts: attempts + 1,
+        });
+        console.warn(
+          `sweep: resumed stale request ${r.ROWID} (attempt ${attempts + 1}/${maxAttempts}, target ${target})`,
+        );
+        continue; // resumed, not failed — leave status=running
+      } catch (e) {
+        console.warn("sweep: resume dispatch failed, falling back to fail:", r.ROWID, e.message);
+        // fall through to fail
+      }
+    }
+
+    // Default: mark failed.
     try {
       await datastore.table("dossier_requests").updateRow({
         ROWID: r.ROWID,
@@ -201,6 +277,17 @@ router.post("/generate", async (req, res) => {
     const wantsHeavy = (body._x === "h");
     const heavyAllowed = wantsHeavy && (await isHeavyAllowed(req.userId, app));
     const targetName = heavyAllowed ? "eliss-heavy-generator" : "eliss-generator";
+
+    // Observability for the covert downgrade: a non-allowlisted caller that
+    // sends `_x:"h"` (e.g. via a tampered client) is silently routed to the
+    // light generator. The response shape is intentionally identical, so this
+    // warning is the only server-side signal that the gate fired. Without it
+    // the gate is impossible to audit from logs.
+    if (wantsHeavy && !heavyAllowed) {
+      console.warn(
+        `heavy_downgrade user_id=${req.userId} request_id=${requestId} requested heavy, routed to light (not allowlisted)`,
+      );
+    }
 
     const jobpoolId = process.env.ELISS_GEN_JOBPOOL_ID;
     let catalystJobId = null;

@@ -4,10 +4,10 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   CheckCircle2,
-  Loader2,
   Sparkles,
   X,
 } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 import {
   Dialog,
@@ -183,6 +183,7 @@ export function DossierActivityPopup() {
       <DialogContent
         className="sm:max-w-xl"
         hideClose={!terminal}
+        flyTarget="#dossier-activity-pill"
         onPointerDownOutside={(e) => {
           if (!terminal) e.preventDefault();
         }}
@@ -233,7 +234,7 @@ function ProgressBody({
   if (!request) {
     return (
       <div className="py-8 flex flex-col items-center gap-2 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Spinner className="h-6 w-6" />
         <span className="text-sm">Connecting…</span>
       </div>
     );
@@ -341,7 +342,7 @@ function ProgressBody({
         )
       ) : (
         <div className="flex items-center gap-3 rounded-md border bg-muted/20 px-3 py-3">
-          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+          <Spinner className="h-4 w-4 text-primary shrink-0" />
           <div className="flex-1 text-sm">
             <div className="font-medium">
               {request.stage
@@ -375,7 +376,7 @@ function ProgressBody({
           >
             {retrying ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner className="h-4 w-4 mr-2" />
                 Retrying…
               </>
             ) : (

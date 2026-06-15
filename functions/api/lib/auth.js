@@ -64,6 +64,14 @@ async function loadRole(req, res, next) {
     req.role = row?.role ?? (isPlatformAdmin ? "admin" : "user");
     req.isAdmin = req.role === "admin";
 
+    // Super-admin is a single account (the project owner), gated by email —
+    // NOT by user_roles.role. It governs the global generation-settings panel
+    // only; regular admins manage users but can't touch generation levers.
+    // Configurable via SUPER_ADMIN_EMAIL so the identity isn't hard-baked.
+    const superEmail = (process.env.SUPER_ADMIN_EMAIL || "dwaipayan.g@zohocorp.com").trim().toLowerCase();
+    const myEmail = (req.user?.email_id || "").trim().toLowerCase();
+    req.isSuperAdmin = !!myEmail && myEmail === superEmail;
+
     const nowStamp = catalystDateTime(new Date());
     const adminDatastore = (req.catalystAdminApp || req.catalystApp).datastore();
 
@@ -107,4 +115,9 @@ async function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { attachCatalyst, requireUser, loadRole, requireAdmin };
+async function requireSuperAdmin(req, res, next) {
+  if (!req.isSuperAdmin) return res.status(403).json({ error: "super-admin only" });
+  next();
+}
+
+module.exports = { attachCatalyst, requireUser, loadRole, requireAdmin, requireSuperAdmin };

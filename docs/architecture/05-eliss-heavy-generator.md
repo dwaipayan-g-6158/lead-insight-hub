@@ -82,11 +82,17 @@ Heavy's lint stage **does not retry** on blocking hits. Rationale: the fanout al
 ### Terminal status rules
 
 ```python
-is_partial = bool(lint_result["hits"] or rr_degraded or fanout_partial)
+is_partial = bool(lint_result["hard_total"] > 0          # any HARD lint hit
+                  or rr_degraded                           # OSINT-only dossier
+                  or fanout_partial                        # ≥1 subagent failed
+                  or _soft_hits_exceed_tolerance(           # SOFT hits > tier tolerance
+                      lint_result, settings, tier, "heavy_lint_soft_tolerance"))
 terminal_status = "partial" if is_partial else "succeeded"
 ```
 
 Heavy reports `partial` more often than Light because of the third trigger (`fanout_partial` — any subagent failed). The frontend treats partial as "show the dossier with a warning banner"; the rep can still use it.
+
+As of v1.1.0 the lint logic matches Light's HARD/SOFT model (see [04 §6](./04-eliss-generator-light.md) — `lib/depth_lint.py` is shared): HOT/WARM are strict (any empty cell warns), COLD/COOL tolerate up to `heavy_lint_soft_tolerance` empty cells (super-admin setting, default **4**), and `No sources cited` blocks at any tier.
 
 ## Memory and timing
 

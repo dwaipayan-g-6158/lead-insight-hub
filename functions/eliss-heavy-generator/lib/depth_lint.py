@@ -21,7 +21,18 @@ import re
 _HARD_LITERALS = [
     ("no_executive_brief", re.compile(r"No executive brief")),
     ("no_applicable_frameworks", re.compile(r"No applicable frameworks")),
+    # v7.6 — empty Source Quality donut. By the time the HTML is rendered the
+    # generate_report.py backfill has already tried to salvage sources from the
+    # narrative's inline citations, so this literal only survives when the
+    # dossier cites ZERO URLs anywhere — a categorical research failure.
+    ("no_sources_cited", re.compile(r"No sources cited")),
 ]
+
+# Literals so categorically broken we regenerate at ANY tier (even COLD),
+# bypassing the HOT/WARM-only gate below: a dossier with zero cited sources is
+# unshippable regardless of lead value, and (post-backfill) means the synthesis
+# produced no citations at all.
+_ALWAYS_BLOCKING = frozenset({"no_sources_cited"})
 
 # Cell-level/field-level empty states — common when public data is genuinely
 # missing for the prospect; retrying doesn't reliably fix them.
@@ -84,7 +95,8 @@ def depth_lint(html, tier, *, rr_degraded=False):
         soft_total_suppressed = 0
         soft_hits_reported = soft_hits
 
-    blocking = bool(hard_hits) and treat_as_blocking
+    always_block = any(h["literal"] in _ALWAYS_BLOCKING for h in hard_hits)
+    blocking = always_block or (bool(hard_hits) and treat_as_blocking)
     any_hit = bool(hard_hits or soft_hits_reported)
     partial = any_hit and not blocking
 

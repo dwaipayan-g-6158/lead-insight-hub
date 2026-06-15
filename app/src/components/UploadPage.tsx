@@ -4,22 +4,23 @@ import { useServerFn } from "@/lib/use-server-fn";
 import { Link } from "@tanstack/react-router";
 import { listLeads, uploadDossier } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useDossierActivity } from "@/lib/dossier-activity";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CreateDossierModal } from "@/components/CreateDossierModal";
+import { CreateDossierModal, markDossierOrigin } from "@/components/CreateDossierModal";
 import { tierClasses } from "@/lib/tier";
 import type { LeadListRow } from "@/types/leads";
 import {
   Upload,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   FileText,
   Sparkles,
   Info,
   ArrowLeft,
   History,
 } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 type Row = { name: string; status: "pending" | "ok" | "error"; message?: string; leadId?: string };
 
@@ -38,9 +39,17 @@ export function UploadPage() {
   const { isAdmin } = useAuth();
   const fn = useServerFn(uploadDossier);
   const list = useServerFn(listLeads);
+  const { leadsVersion } = useDossierActivity();
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Mark the clicked button as the FLIP origin so the modal flies out from /
+  // minimizes back into the exact button the user pressed.
+  const openCreate = (e: React.MouseEvent<HTMLButtonElement>) => {
+    markDossierOrigin(e.currentTarget);
+    setCreateOpen(true);
+  };
   const [recent, setRecent] = useState<LeadListRow[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -66,7 +75,7 @@ export function UploadPage() {
     return () => {
       cancelled = true;
     };
-  }, [list, refreshTick]);
+  }, [list, refreshTick, leadsVersion]);
 
   const successCount = useMemo(() => rows.filter((r) => r.status === "ok").length, [rows]);
   useEffect(() => {
@@ -117,7 +126,7 @@ export function UploadPage() {
         <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
           <Button
             size="sm"
-            onClick={() => setCreateOpen(true)}
+            onClick={openCreate}
             className="w-full sm:w-auto cursor-pointer"
           >
             <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
@@ -185,7 +194,7 @@ export function UploadPage() {
             <Button
               className="w-full mt-4 cursor-pointer"
               size="sm"
-              onClick={() => setCreateOpen(true)}
+              onClick={openCreate}
             >
               <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier now
             </Button>
@@ -211,7 +220,7 @@ export function UploadPage() {
           <Button
             className="w-full mt-4 cursor-pointer"
             size="sm"
-            onClick={() => setCreateOpen(true)}
+            onClick={openCreate}
           >
             <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier now
           </Button>
@@ -222,14 +231,14 @@ export function UploadPage() {
         <Card className="p-0 overflow-hidden">
           <div className="px-4 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
             <span>Processing queue</span>
-            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {busy && <Spinner className="h-3.5 w-3.5" />}
           </div>
           <ul className="divide-y divide-border">
             {rows.map((r, i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
                 <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="truncate flex-1">{r.name}</span>
-                {r.status === "pending" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                {r.status === "pending" && <Spinner className="h-4 w-4 text-muted-foreground" />}
                 {r.status === "ok" && (
                   <>
                     <span className="text-xs text-muted-foreground">{r.message}</span>
@@ -263,7 +272,7 @@ export function UploadPage() {
         <div className="px-4 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
           <History className="h-3.5 w-3.5" />
           <span>{isAdmin ? "Recent uploads" : "Recent leads"}</span>
-          {recentLoading && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
+          {recentLoading && <Spinner className="h-3 w-3 ml-1" />}
         </div>
         {recent.length === 0 && !recentLoading ? (
           <div className="py-10 flex flex-col items-center gap-2 text-center px-6 text-muted-foreground">

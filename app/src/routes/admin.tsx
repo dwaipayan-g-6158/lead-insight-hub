@@ -2,7 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { AdminPage } from "@/components/AdminPage";
 import { useAuth } from "@/lib/auth";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { Card } from "@/components/ui/card";
 
 function AdminGuard() {
@@ -20,7 +21,7 @@ function AdminGuard() {
   if (roleLoading) {
     return (
       <div className="grid min-h-[40vh] place-items-center text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Spinner className="h-6 w-6" />
       </div>
     );
   }

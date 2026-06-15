@@ -86,7 +86,6 @@ function LoginScreen() {
     let alertMsgObs: MutationObserver | null = null;
     let srcObs: MutationObserver | null = null;
     let alertDismissTimer = 0;
-    let bodyTransformTimer = 0;
     let pollHandle = 0;
     let attachedIframe: HTMLIFrameElement | null = null;
 
@@ -141,7 +140,7 @@ function LoginScreen() {
         if (liveDoc.querySelector('link[data-liw-theme="1"]')) return;
         const link = liveDoc.createElement("link");
         link.rel = "stylesheet";
-        link.href = `${window.location.origin}/app/login-iframe.css?v=33`;
+        link.href = `${window.location.origin}/app/login-iframe.css?v=35`;
         link.setAttribute("data-liw-theme", "1");
         liveDoc.head.appendChild(link);
       };
@@ -157,32 +156,23 @@ function LoginScreen() {
         // Soft fade-in for the doc body so cross-iframe navigation
         // (signin → forgot-password → back) reads as a transition
         // rather than a flash of unstyled content.
+        //
+        // Opacity-ONLY — deliberately no transform. A sub-pixel transform
+        // animation (the old translateY(2px)→0 slide) re-rasterizes every
+        // 1px hairline each frame, which shimmered the input/divider borders
+        // and the primary button edges during the Forgot-Password navigation
+        // (the reported "flickering straight line / button edges"). Opacity
+        // fades cleanly without touching the raster grid. As a bonus, body
+        // now keeps `transform: none` permanently, so it never becomes the
+        // containing block for the position:fixed .Alert banner — which is
+        // why the old 360ms transform-cleanup timer is gone.
         if (doc.body) {
           doc.body.style.opacity = "0";
-          doc.body.style.transform = "translateY(2px)";
           doc.body.style.transition =
-            "opacity 0.28s cubic-bezier(0.16, 0.84, 0.32, 1), transform 0.32s cubic-bezier(0.16, 0.84, 0.32, 1)";
+            "opacity 0.28s cubic-bezier(0.16, 0.84, 0.32, 1)";
           requestAnimationFrame(() => {
-            if (doc.body) {
-              doc.body.style.opacity = "1";
-              doc.body.style.transform = "translateY(0)";
-            }
+            if (doc.body) doc.body.style.opacity = "1";
           });
-          // After the slide-in completes, drop the inline transform.
-          // translateY(0) is visually identity, but ANY non-`none`
-          // transform makes body the containing block for `position:
-          // fixed` descendants. Catalyst's JS programmatically scrolls
-          // body (~24 px on the OTP step, ~100 px on input focus) and
-          // the .Alert banner — anchored to body's padding box at
-          // top:8px — scrolls with it, clipping its top edge above the
-          // iframe viewport. Restoring `transform: none` re-anchors the
-          // banner to the iframe viewport, where top:8px stays put
-          // regardless of body.scrollTop.
-          if (bodyTransformTimer) clearTimeout(bodyTransformTimer);
-          bodyTransformTimer = window.setTimeout(() => {
-            if (doc.body) doc.body.style.transform = "";
-            bodyTransformTimer = 0;
-          }, 360);
         }
         if (pollHandle) {
           clearTimeout(pollHandle);
@@ -399,7 +389,6 @@ function LoginScreen() {
       resizeObs?.disconnect();
       if (pollHandle) clearTimeout(pollHandle);
       if (alertDismissTimer) clearTimeout(alertDismissTimer);
-      if (bodyTransformTimer) clearTimeout(bodyTransformTimer);
     };
   }, []);
 

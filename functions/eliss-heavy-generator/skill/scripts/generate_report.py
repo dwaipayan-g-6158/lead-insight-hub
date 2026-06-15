@@ -36,7 +36,7 @@ from pathlib import Path
 # value flows to: HTML footer banner, default for meta.version when JSON omits
 # it, and the inline analyst tag rewriter that backfills outdated dossier
 # version stamps. Never hardcode the version string anywhere else in this file.
-ELISS_VERSION = '7.5.3'
+ELISS_VERSION = '7.4.2'
 
 # User-facing display version — major.minor only, no patch digit. Shown in
 # Tab 1 header brand-mark, Tab 2 analyst tag, and the footer. The canonical
@@ -114,15 +114,12 @@ _LEAD_TITLE_PROCESS_NOISE = (
 
 
 def _clean_lead_title(raw_title, placeholder='Title to be confirmed'):
-    """v7.5.2 — strip process prose from lead.title before it hits the header.
-
-    The Tab 1 lead-sub line and the Person Profile field-value both render
-    ``lead.title`` directly. When verification fails, analysts have written
-    things like ``"Unknown — verification incomplete after 4 OSINT angles"``
-    into the title field. That prose belongs in ``data_quality.gaps[]``,
-    not the dossier header. This guard normalizes the field so the header
-    stays clean even when authoring discipline slips.
-    """
+    """v7.5.2 (parity with eliss-light) — strip process prose from lead.title
+    before it reaches the Tab 1 lead-sub header. Analysts have written things
+    like ``"Unknown — verification incomplete after 4 OSINT angles"`` into
+    the title field; that prose belongs in ``data_quality.gaps[]``, not the
+    dossier header. This guard normalizes the field so the header stays
+    clean even when authoring discipline slips."""
     if not raw_title:
         return placeholder
     s = str(raw_title).strip()
@@ -134,6 +131,25 @@ def _clean_lead_title(raw_title, placeholder='Title to be confirmed'):
     if any(marker in lc for marker in _LEAD_TITLE_PROCESS_NOISE):
         return placeholder
     return s
+
+
+def _shorten_url_for_pill(url):
+    """v7.3.0 — Return a compact display label for an inline URL pill.
+
+    Returns just the host (or ``host/…`` when the URL has a non-trivial path)
+    so the rendered ``.md-link`` pill stays compact in flowing prose. The full
+    URL stays in the anchor's ``href`` and ``title`` attributes — the visible
+    label is the only thing that gets shortened. Falls back to the raw URL
+    if the input doesn't parse as ``http(s)://host[/path]``.
+    """
+    if not isinstance(url, str) or not url:
+        return url
+    m = re.match(r'^https?://(?:www\.)?([^/?#]+)(/[^?#]*)?', url)
+    if not m:
+        return url
+    host = m.group(1)
+    path = (m.group(2) or '').rstrip('/')
+    return host if not path else f'{host}/…'
 
 
 def _resolve_executive_brief(data):
@@ -151,6 +167,8 @@ def _resolve_executive_brief(data):
     md = data.get('full_dossier_markdown') or ''
     if not md:
         return 'No executive brief provided.'
+    # Prefer the first non-trivial paragraph (skips heading-only lines), then
+    # truncate to the same 500-char ceiling fallback_from_markdown uses.
     for para in re.split(r'\n\s*\n', md):
         cleaned = para.strip()
         if cleaned and not cleaned.startswith('#') and len(cleaned) > 40:
@@ -489,11 +507,22 @@ def svg_signal_timeline(signals_data, width=760, height=220):
         if not isinstance(age, (int, float)):
             age = 30
         cat = s.get('signal_category', 'general')
+        # Structured-value dicts (`{value, confidence, tier, ...}`) may be
+        # used for evidence-bearing fields. `_extract_value` returns the
+        # `.value` string when the field is a dict and a bare string
+        # otherwise — keeps `abs()` and the str-cast paths from crashing.
+        pts = s.get('points', 1)
+        if isinstance(pts, dict):
+            pts_v = _extract_value(pts, '1')
+            try:
+                pts = int(re.search(r'-?\d+', pts_v).group()) if pts_v else 1
+            except (AttributeError, ValueError):
+                pts = 1
         all_sigs.append({
             'age': max(0, min(age, 365)),
-            'pts': abs(s.get('points', 1)),
-            'label': s.get('signal', s.get('source', 'Signal')),
-            'source': s.get('source', ''),
+            'pts': abs(pts),
+            'label': _extract_value(s.get('signal'), _extract_value(s.get('source'), 'Signal')),
+            'source': _extract_value(s.get('source'), ''),
             'sign': 'pos',
             'category': cat,
         })
@@ -502,14 +531,16 @@ def svg_signal_timeline(signals_data, width=760, height=220):
         if not isinstance(age, (int, float)):
             age = 60
         imp = s.get('impact', s.get('points', -10))
+        if isinstance(imp, dict):
+            imp = _extract_value(imp, '-10')
         if isinstance(imp, str):
             m = re.search(r'-?\d+', imp)
             imp = int(m.group()) if m else -10
         all_sigs.append({
             'age': max(0, min(age, 365)),
             'pts': abs(imp),
-            'label': s.get('flag', s.get('signal', 'Risk')),
-            'source': s.get('evidence', s.get('source', '')),
+            'label': _extract_value(s.get('flag'), _extract_value(s.get('signal'), 'Risk')),
+            'source': _extract_value(s.get('evidence'), _extract_value(s.get('source'), '')),
             'sign': 'neg',
             # Negative signals don't get custom category coloring; always red
             'category': s.get('signal_category', 'breach_incident'),
@@ -824,15 +855,18 @@ def svg_dmu_ghost_map(org_intel, lead=None, size_w=760, size_h=560):
     # First entry renders at top-center between EB and Blocker as a violet node.
     # Schema: [{role, name, title, relevance?}]
     additional_stakeholders = org_intel.get('additional_stakeholders', []) or []
-    contact_name = (lead or {}).get('name', '') if lead else ''
-    contact_title = (lead or {}).get('title', '') if lead else ''
+    # Lead and DMU fields may arrive as bare strings or as structured-value
+    # dicts (`{value, confidence, tier, ...}`); unwrap them once at the entry
+    # so downstream `.strip()` / `.split()` calls don't crash on dicts.
+    contact_name = _extract_value((lead or {}).get('name'), '') if lead else ''
+    contact_title = _extract_value((lead or {}).get('title'), '') if lead else ''
 
     def has_person(role):
-        n = role.get('name', '') or ''
+        n = _extract_value((role or {}).get('name'), '') or ''
         return bool(n.strip()) and n.strip().lower() not in ('unknown', '—', '-', 'n/a', 'tbd')
 
     def truncate(text, max_chars):
-        text = (text or '').strip()
+        text = (_extract_value(text, '') or '').strip()
         return text if len(text) <= max_chars else text[: max_chars - 1] + '…'
 
     r_outer = 32
@@ -940,7 +974,7 @@ def svg_dmu_ghost_map(org_intel, lead=None, size_w=760, size_h=560):
     has_eb = has_person(economic_buyer)
     has_ch = has_person(champion)
     has_bl = has_person(blocker)
-    tech_is_contact = (contact_name and technical_eval.get('name', '').strip() == contact_name.strip())
+    tech_is_contact = (contact_name and _extract_value(technical_eval.get('name'), '').strip() == contact_name.strip())
     has_contact_or_tech = has_person(technical_eval) or bool(contact_name)
 
     # ---- Edges rendered FIRST so nodes draw on top of them ------------------
@@ -1452,8 +1486,12 @@ def svg_dmu_orgchart(org, width=760, height=380):
     lines = ''
     for (role_label, person, color, sub), (x, y) in zip(roles, positions):
         if isinstance(person, dict):
-            name = (person.get('name') or 'Unknown').strip()
-            title = (person.get('title') or '').strip()
+            # `_extract_value` unwraps the structured-value `{value, confidence,
+            # tier, ...}` shape evidence-bearing fields use; without it the
+            # `.strip()` below crashes when the dossier marks DMU member
+            # names/titles as evidence dicts.
+            name = (_extract_value(person.get('name'), 'Unknown') or 'Unknown').strip()
+            title = (_extract_value(person.get('title'), '') or '').strip()
         else:
             name = 'Unknown'
             title = ''
@@ -1615,9 +1653,19 @@ def build_verdict_banner(data):
     # Pull a one-line insight
     insight = data.get('executive_brief', '')
     if insight:
-        # Take the first sentence
-        m = re.match(r'(.+?[.!?])\s', insight + ' ')
-        insight = m.group(1) if m else insight[:180]
+        # Take the first sentence — but don't break on common abbreviations
+        # (e.g. "Asst.", "Inc.", "Dr.") that carry a mid-sentence period.
+        _ABBREV = {'asst', 'dr', 'mr', 'mrs', 'ms', 'inc', 'corp', 'ltd', 'co',
+                   'sr', 'jr', 'vs', 'st', 'dept', 'vp', 'ceo', 'cfo', 'cto',
+                   'cio', 'gov', 'no', 'approx', 'e.g', 'i.e'}
+        first = None
+        for _m in re.finditer(r'[.!?]\s+', insight):
+            _prev = re.search(r'([A-Za-z.]+)$', insight[:_m.start()])
+            if _prev and _prev.group(1).rstrip('.').lower() in _ABBREV:
+                continue
+            first = insight[:_m.start() + 1]
+            break
+        insight = first if first else insight[:180]
     else:
         insight = 'No executive brief available.'
 
@@ -1635,7 +1683,7 @@ def build_verdict_banner(data):
   </div>
   <div class="verdict-body">
     <div class="verdict-headline">
-      <span style="color:{tc['color']};font-weight:800">{action}</span> — {escape_html(lead.get('name', 'Unknown'))} @ {escape_html(company.get('name', 'Unknown'))}
+      <span style="color:{tc['color']};font-weight:800">{action}</span> — {escape_html(_extract_value(lead.get('name'), 'Unknown'))} @ {escape_html(_extract_value(company.get('name'), 'Unknown'))}
     </div>
     <div class="verdict-insight">{escape_html(insight)}</div>
     {f'<div class="verdict-next">→ {escape_html(next_step)}</div>' if next_step else ''}
@@ -1661,14 +1709,18 @@ def build_validation_visual(scoring):
     if isinstance(intent, dict):
         if intent.get('triangulation_applied'):
             rules.append(('TRIANGULATION', 'Intent from single category — ×0.80 penalty', '#8b5cf6'))
-        # v6.1: Detect Intent score capping. Two signals can fire:
+        # v6.1/v6.2: Detect Intent score capping. Two signals can fire:
         #   (a) explicit `raw_total` field set by the analyst (preferred), or
-        #   (b) inferred from the signals[] array — if Σ points > score and
-        #       score == max, the cap was applied implicitly.
-        # Previously this was invisible: a 39-pt raw Intent capped to 25
-        # would show "Clean score — no caps applied" on the validation panel
-        # while the dossier markdown clearly noted the cap. Inconsistency
-        # eroded trust in the panel as a single source of truth.
+        #   (b) inferred from the signals[] array — if Σ points > score, a cap
+        #       (triangulation or methodology ceiling) was applied implicitly.
+        # The cap fires whenever raw > score, REGARDLESS of whether score hit
+        # the 25-pt rubric max. The old `score >= max_score` guard only caught
+        # caps that pinned Intent at 25 and silently reported "Clean score" for
+        # any sub-max cap (e.g. a triangulation cap landing at 23) — which then
+        # contradicted the Score Attribution bar (build_score_attribution_bar),
+        # whose cap test is `raw_total > score`. The two panels read the same
+        # intent dict and MUST agree, so this now uses the identical condition
+        # and reports the cap at the actual capped value (score), not the max.
         score = intent.get('score', 0) or 0
         max_score = intent.get('max', 25) or 25
         raw = intent.get('raw_total')
@@ -1679,11 +1731,11 @@ def build_validation_visual(scoring):
                     raw = sum(int(s.get('points', 0) or 0) for s in sigs if isinstance(s, dict))
                 except (TypeError, ValueError):
                     raw = score
-        if isinstance(raw, (int, float)) and raw > score and score >= max_score:
+        if isinstance(raw, (int, float)) and raw > score:
             rules.append((
                 'INTENT CAP',
-                f'Cap @ {int(max_score)} — raw {int(raw)} pts trimmed to ceiling',
-                '#eab308'
+                f'Intent raw {int(raw)} → capped at {int(score)}',
+                '#ec4899'
             ))
 
     # Negative modifiers
@@ -1707,28 +1759,6 @@ def build_validation_visual(scoring):
             rules.append(('NEG MOD', desc, '#ef4444'))
         else:
             rules.append(('NEG MOD', str(nm), '#ef4444'))
-
-    # Deal execution risks (separate from structural negative_modifiers per the
-    # scoring rubric — risks aggregate into risk_adjusted_composite, modifiers
-    # subtract from composite). Without this block the panel rendered "Clean
-    # score" while the score had moved by total_risk_adjustment.
-    risks = scoring.get('deal_execution_risks', []) or []
-    for r in risks:
-        if isinstance(r, str):
-            rules.append(('RISK ADJ', r, '#f97316'))
-        elif isinstance(r, dict):
-            label = (r.get('risk')
-                     or r.get('label')
-                     or r.get('name')
-                     or r.get('description')
-                     or 'Unknown risk')
-            adjustment = r.get('adjustment', r.get('points', r.get('impact', '')))
-            desc = label
-            if adjustment:
-                desc += f' ({adjustment})'
-            rules.append(('RISK ADJ', desc, '#f97316'))
-        else:
-            rules.append(('RISK ADJ', str(r), '#f97316'))
 
     if not rules:
         return '<div class="validation-clean">✓ Clean score — no caps, decay, or negative modifiers applied</div>'
@@ -1783,10 +1813,45 @@ def render_evidence_chips(urls, aria_context='evidence'):
 
 
 def build_signals_html(signals):
-    """Build the buying signals list section (complements the timeline)."""
+    """Build the buying signals list section (complements the timeline).
+
+    v7.5+ (Mom Test): each signal renders with its symbol chip (taxonomy:
+    ⚡ pain, ⚓ goal, ☐ obstacle, ⤴ workaround, ^ background, ☑ purchasing,
+    $ money, ♀ key-person) and, for pain/obstacle signals, the obstacle +
+    workaround pair inline. Evidence_strength below 'sourced' renders a
+    confidence pill (inferred=yellow, assumed=gray) next to the existing
+    confidence tag.
+    """
     html_parts = []
     pos = signals.get('positive', []) or []
     neg = signals.get('negative', []) or []
+    ev_index = signals.get('evidence_index') or {}
+
+    # Counter line — sourced / inferred / assumed split
+    if pos or neg:
+        all_sigs = list(pos) + list(neg)
+        n_total = len(all_sigs)
+        n_sourced = n_inferred = n_assumed = 0
+        for s in all_sigs:
+            if not isinstance(s, dict):
+                continue
+            sid = s.get('id')
+            strength = ev_index.get(sid) if sid is not None else None
+            if strength is None:
+                strength = s.get('evidence_strength', 'sourced')
+            if strength == 'inferred':
+                n_inferred += 1
+            elif strength == 'assumed':
+                n_assumed += 1
+            else:
+                n_sourced += 1
+        if n_inferred or n_assumed:
+            html_parts.append(
+                f'<div class="sig-counter">'
+                f'{n_total} signals — {n_sourced} sourced, {n_inferred} inferred, {n_assumed} assumed. '
+                f'<span class="sig-counter-help">Pills (yellow/gray) flag claims that aren\'t directly URL-anchored.</span>'
+                f'</div>'
+            )
 
     if pos:
         html_parts.append('<h3>Positive Signals</h3>')
@@ -1796,16 +1861,31 @@ def build_signals_html(signals):
             conf = s.get('confidence', 'MEDIUM')
             cc = CONF_CONFIG.get(conf, CONF_CONFIG['MEDIUM'])
             evidence_chips = render_evidence_chips(s.get('evidence_urls'), aria_context='signal')
+            sym_chip = _signal_symbol_chip(s.get('signal_symbol'))
+            sid = s.get('id')
+            strength = ev_index.get(sid) if sid is not None else s.get('evidence_strength', 'sourced')
+            conf_pill = _confidence_pill(strength)
+            obstacle = _extract_value(s.get('obstacle'), '')
+            workaround = _extract_value(s.get('workaround'), '')
+            ow_html = ''
+            if obstacle or workaround:
+                ow_html = '<div class="sig-ow">'
+                if obstacle:
+                    ow_html += f'<div class="sig-ow-line"><span class="sig-ow-sym">☐</span><span class="sig-ow-lbl">Obstacle:</span><span class="sig-ow-val">{escape_html(obstacle)}</span></div>'
+                if workaround:
+                    ow_html += f'<div class="sig-ow-line"><span class="sig-ow-sym">⤴</span><span class="sig-ow-lbl">Workaround:</span><span class="sig-ow-val">{escape_html(workaround)}</span></div>'
+                ow_html += '</div>'
             html_parts.append(f'''<div class="signal-item signal-positive">
   <div class="signal-main">
     <span class="signal-badge" style="background:{DIM_COLORS['intent']}20;color:{DIM_COLORS['intent']}">+{s.get('points', '?')}</span>
-    <span class="signal-text">{escape_html(s.get('signal', ''))}</span>
+    {sym_chip}<span class="signal-text">{escape_html(s.get('signal', ''))}</span>{conf_pill}
   </div>
   <div class="signal-meta">
     <span>{escape_html(s.get('source', ''))}{evidence_chips}</span>
     <span class="signal-age">{age_label}</span>
     <span class="conf-tag" style="color:{cc['color']}">{conf}</span>
   </div>
+  {ow_html}
 </div>''')
 
     if neg:
@@ -1814,10 +1894,10 @@ def build_signals_html(signals):
             evidence_chips = render_evidence_chips(s.get('evidence_urls'), aria_context='risk flag')
             html_parts.append(f'''<div class="signal-item signal-negative">
   <div class="signal-main">
-    <span class="signal-badge" style="background:rgba(239,68,68,0.15);color:#ef4444">{escape_html(str(s.get('impact', '?')))}</span>
-    <span class="signal-text">{escape_html(s.get('flag', s.get('signal', '')))}</span>
+    <span class="signal-badge" style="background:rgba(239,68,68,0.15);color:#ef4444">{escape_html(str(_extract_value(s.get('impact'), '?')))}</span>
+    <span class="signal-text">{escape_html(_extract_value(s.get('flag'), _extract_value(s.get('signal'), '')))}</span>
   </div>
-  <div class="signal-meta"><span>{escape_html(s.get('evidence', s.get('source', '')))}{evidence_chips}</span></div>
+  <div class="signal-meta"><span>{escape_html(_extract_value(s.get('evidence'), _extract_value(s.get('source'), '')))}{evidence_chips}</span></div>
 </div>''')
 
     net = signals.get('net_assessment', '')
@@ -1853,7 +1933,45 @@ def build_recommendations_html(recs, tier):
     outreach = recs.get('outreach', {})
     outreach_html = ''
     if outreach:
-        outreach_html = f'''<div class="outreach-box">
+        vision   = _extract_value(outreach.get('vision'), '')
+        framing  = _extract_value(outreach.get('framing'), '')
+        weakness = _extract_value(outreach.get('weakness'), '')
+        pedestal = _extract_value(outreach.get('pedestal'), '')
+        ask      = _extract_value(outreach.get('ask'), '')
+        posture  = _extract_value(outreach.get('advisory_posture'), '')
+        has_vfwpa = any([vision, framing, weakness, pedestal, ask, posture])
+        if has_vfwpa:
+            beats = []
+            for label, val in [
+                ('VISION',    vision),
+                ('FRAMING',   framing),
+                ('WEAKNESS',  weakness),
+                ('PEDESTAL',  pedestal),
+                ('ASK',       ask),
+            ]:
+                if val:
+                    beats.append(
+                        f'<div class="vfwpa-beat">'
+                        f'<span class="vfwpa-label">{label}</span>'
+                        f'<span class="vfwpa-text">{escape_html(val)}</span>'
+                        f'</div>'
+                    )
+            posture_html = (
+                f'<div class="vfwpa-posture"><strong>Advisory posture:</strong> {escape_html(posture)}</div>'
+            ) if posture else ''
+            channel = escape_html(outreach.get('channel', 'Email'))
+            timing  = escape_html(outreach.get('timing', ''))
+            outreach_html = (
+                f'<div class="vfwpa-box">'
+                f'<div class="vfwpa-head">Outreach (VFWPA) — {channel}'
+                + (f' · {timing}' if timing else '')
+                + '</div>'
+                + posture_html
+                + ''.join(beats)
+                + '</div>'
+            )
+        else:
+            outreach_html = f'''<div class="outreach-box">
   <strong>Outreach:</strong> {escape_html(outreach.get('channel', 'Email'))} — {escape_html(outreach.get('timing', ''))}
   <div class="outreach-hook"><em>Hook: {escape_html(outreach.get('hook', ''))}</em></div>
 </div>'''
@@ -2049,11 +2167,11 @@ def build_competitive_matrix_html(technology):
             threat = row.get('threat_level', 'Moderate')
             tc = THREAT_COLORS.get(threat, THREAT_COLORS['Moderate'])
             rows_html.append(f'''<tr>
-  <td class="ct-competitor"><strong>{comp}</strong></td>
-  <td><span class="likelihood-badge" style="background:{lc['bg']};color:{lc['color']}">{escape_html(likelihood)}</span></td>
-  <td class="ct-basis">{basis}{basis_chips}</td>
-  <td class="ct-angle">{angle}</td>
-  <td><span class="threat-badge" style="background:{tc['bg']};color:{tc['color']}">{tc['icon']} {escape_html(threat)}</span></td>
+  <td class="ct-competitor" data-label="Competitor"><strong>{comp}</strong></td>
+  <td data-label="Presence"><span class="likelihood-badge" style="background:{lc['bg']};color:{lc['color']}">{escape_html(likelihood)}</span></td>
+  <td class="ct-basis" data-label="Evidence / Basis">{basis}{basis_chips}</td>
+  <td class="ct-angle" data-label="Displacement Angle">{angle}</td>
+  <td data-label="Threat"><span class="threat-badge" style="background:{tc['bg']};color:{tc['color']}">{tc['icon']} {escape_html(threat)}</span></td>
 </tr>''')
         parts.append(f'''<div class="md-table-wrap comp-matrix-wrap">
   <table class="md-table comp-matrix">
@@ -2149,7 +2267,19 @@ def build_demo_playbook_html(demo):
         moments_html = ''.join(moment_cards) if moment_cards else '<p class="empty">No value moments authored.</p>'
 
         qs = [q for q in (prod_data.get('discovery_questions') or []) if q]
-        qs_html = ''.join(f'<li>{escape_html(q)}</li>' for q in qs) if qs else ''
+        anchors = prod_data.get('discovery_anchors') or []
+        qs_lis = []
+        for i, q in enumerate(qs):
+            anchor = anchors[i] if i < len(anchors) and isinstance(anchors[i], dict) else None
+            anchor_html = ''
+            if anchor:
+                fact = escape_html(_extract_value(anchor.get('anchor_fact'), ''))
+                url  = _extract_value(anchor.get('source_url'), '')
+                chip = render_evidence_chips([url], aria_context='discovery anchor') if url else ''
+                if fact:
+                    anchor_html = f'<div class="demo-q-anchor">⟵ anchor: {fact}{chip}</div>'
+            qs_lis.append(f'<li>{escape_html(q)}{anchor_html}</li>')
+        qs_html = ''.join(qs_lis) if qs_lis else ''
 
         objs = prod_data.get('top_objections') or []
         obj_cards = []
@@ -2269,7 +2399,8 @@ def build_deal_execution_risks_html(scoring):
         rows_html = []
         for r in risks:
             desc = escape_html(r.get('risk', ''))
-            weight = r.get('weight', 0)
+            # Schema field is `adjustment` (-2..-5); fall back to legacy `weight`.
+            weight = r.get('adjustment', r.get('weight', 0))
             try:
                 w_i = int(weight)
             except (TypeError, ValueError):
@@ -2282,11 +2413,11 @@ def build_deal_execution_risks_html(scoring):
             cred = r.get('mitigation_credibility', 'MEDIUM')
             cc = CONF_CONFIG.get(cred, CONF_CONFIG['MEDIUM'])
             rows_html.append(f'''<tr>
-  <td class="der-weight"><span class="der-weight-badge" style="color:{w_color}">{w_label}</span></td>
-  <td class="der-risk"><strong>{desc}</strong></td>
-  <td class="der-evidence">{evidence}{evidence_chips}</td>
-  <td class="der-mitigation">{mitigation}</td>
-  <td class="der-cred"><span class="conf-tag" style="color:{cc['color']}">{escape_html(cred)}</span></td>
+  <td class="der-weight" data-label="Weight"><span class="der-weight-badge" style="color:{w_color}">{w_label}</span></td>
+  <td class="der-risk" data-label="Risk Factor"><strong>{desc}</strong></td>
+  <td class="der-evidence" data-label="Evidence">{evidence}{evidence_chips}</td>
+  <td class="der-mitigation" data-label="Mitigation">{mitigation}</td>
+  <td class="der-cred" data-label="Credibility"><span class="conf-tag" style="color:{cc['color']}">{escape_html(cred)}</span></td>
 </tr>''')
         parts.append(f'''<div class="md-table-wrap der-wrap">
   <table class="md-table der-table">
@@ -2344,6 +2475,118 @@ def build_rep_readiness_html(checklist):
     return f'<ul class="rr-list">{lis}</ul>'
 
 
+def build_local_autonomy_card(org):
+    """ELISS v5.5+: Local Autonomy classification card.
+
+    For subsidiaries / regional offices / business units of a larger parent,
+    surface the autonomy classification (HIGH / MEDIUM / LOW) plus the parent
+    entity, detected global incumbents, rationale, and impact. Per SKILL.md
+    the analyst is responsible for adding the `low_local_autonomy` (−12)
+    negative modifier to `scoring.negative_modifiers` when classification is
+    LOW; this card is the visible companion that lets the rep see WHY.
+
+    Returns '' when the field is absent or the classification is missing,
+    so non-subsidiary leads silently omit the card.
+    """
+    la = (org or {}).get('local_autonomy') or {}
+    if not isinstance(la, dict):
+        return ''
+    classification = (_extract_value(la.get('classification'), '') or '').strip().upper()
+    if classification not in ('HIGH', 'MEDIUM', 'LOW'):
+        return ''
+
+    color_by_class = {
+        'HIGH':   {'bg': 'rgba(34,197,94,0.12)',  'border': '#22c55e', 'label_color': '#22c55e'},
+        'MEDIUM': {'bg': 'rgba(245,158,11,0.12)', 'border': '#f59e0b', 'label_color': '#f59e0b'},
+        'LOW':    {'bg': 'rgba(239,68,68,0.12)',  'border': '#ef4444', 'label_color': '#ef4444'},
+    }
+    c = color_by_class[classification]
+
+    parent_entity = _extract_value(la.get('parent_entity'), '')
+    rationale = _extract_value(la.get('rationale'), '')
+    impact = _extract_value(la.get('impact'), '')
+    incumbents = la.get('global_incumbents') or []
+    if not isinstance(incumbents, list):
+        incumbents = []
+    incumbent_pills = ''.join(
+        f'<span class="comp-pill">{escape_html(str(i))}</span>' for i in incumbents if i
+    )
+
+    rows = []
+    if parent_entity:
+        rows.append(
+            f'<div class="field"><span class="field-label">Parent Entity</span>'
+            f'<span class="field-value">{escape_html(parent_entity)}</span></div>'
+        )
+    if incumbent_pills:
+        rows.append(
+            f'<div class="field"><span class="field-label">Global Incumbents</span>'
+            f'<span class="field-value">{incumbent_pills}</span></div>'
+        )
+    if rationale:
+        rows.append(
+            f'<div class="strategy-note" style="margin-top:8px">'
+            f'<strong>Rationale:</strong> {escape_html(rationale)}</div>'
+        )
+    if impact:
+        rows.append(
+            f'<div class="strategy-note" style="margin-top:8px">'
+            f'<strong>Impact:</strong> {escape_html(impact)}</div>'
+        )
+
+    body = ''.join(rows) if rows else (
+        '<div class="strategy-note" style="margin-top:8px;color:#94a3b8">'
+        'No parent / incumbent / rationale provided.</div>'
+    )
+
+    return (
+        f'<div style="background:{c["bg"]};border:1px solid {c["border"]};'
+        f'border-radius:12px;padding:16px 20px">'
+        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'
+        f'<span style="background:{c["border"]};color:#0b0f17;padding:4px 12px;'
+        f'border-radius:999px;font-weight:800;font-size:12px;letter-spacing:1px">'
+        f'{classification}</span>'
+        f'<span style="font-weight:600;color:#cbd5e1">Local Autonomy</span>'
+        f'</div>'
+        f'{body}'
+        f'</div>'
+    )
+
+
+def build_personalization_hooks_card(lead):
+    """ELISS v7.0+: Personalization Hooks card.
+
+    Subagent D (Layer 7) populates `lead.personalization_hooks[]` with 2-3
+    specific outreach openers grounded in the contact's public footprint
+    (talks, articles, GitHub, declared skills). Surfacing them on Tab 1
+    means the rep sees them next to the verdict banner — the moment they
+    decide to call, the openers are right there.
+
+    Returns '' when the array is missing/empty.
+    """
+    hooks = (lead or {}).get('personalization_hooks') or []
+    if not isinstance(hooks, list):
+        return ''
+    cleaned = [h for h in hooks if h and isinstance(h, str) and h.strip()]
+    if not cleaned:
+        return ''
+    rr_flag = bool((lead or {}).get('_rocketreach_personalization_hooks'))
+    pill = _RR_PILL_HTML if rr_flag else ''
+    items = ''.join(
+        f'<li style="margin:6px 0;line-height:1.5">{escape_html(h)}</li>'
+        for h in cleaned
+    )
+    return (
+        f'<div style="background:rgba(99,102,241,0.08);border:1px solid '
+        f'rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px">'
+        f'<div style="font-size:11px;text-transform:uppercase;letter-spacing:1.4px;'
+        f'color:#818cf8;font-weight:700;margin-bottom:8px">'
+        f'Personalization Hooks{pill}</div>'
+        f'<ul style="margin:0;padding-left:20px;color:#cbd5e1">{items}</ul>'
+        f'</div>'
+    )
+
+
 # =============================================================================
 #  v6.2 — WAVE 1 INFOGRAPHICS
 #  Four additive visualizations that complement (never replace) existing
@@ -2377,14 +2620,23 @@ _ATTR_CAT_COLORS = {
     'procurement_cycle': '#8b5cf6',
 }
 
+# Distinct-color fallback palette for categories outside the curated map above.
+# Indexed by a stable hash of the normalized label so unmapped categories get
+# differentiated (not all-indigo) colors. On-brand hues; order is arbitrary.
+_ATTR_FALLBACK_PALETTE = (
+    '#6366f1', '#8b5cf6', '#0ea5e9', '#14b8a6', '#f97316', '#eab308',
+    '#d946ef', '#22c55e', '#06b6d4', '#a855f7', '#ec4899', '#10b981',
+)
+
 def _attr_color(label):
     """Resolve a category label to a stable hex color; fall back to indigo.
 
-    v7.2.1: case-insensitive + keyword-based fallback so analyst-written
-    categories like "Compliance Need" (capital N) or "AD/IAM Pain (proxy)"
-    don't all collapse to indigo and render the attribution bar as a single
-    color. Tries exact match first, then a normalized lookup, then keyword
-    matching against common buying-signal vocabularies.
+    v7.5.4 (parity with /eliss-light v7.2.1): case-insensitive + keyword-based
+    fallback so analyst-written categories like "Compliance Need" (capital N)
+    or "AD/IAM Pain (proxy)" don't all collapse to indigo and render the
+    attribution bar as a single color. Tries exact match first, then a
+    normalized lookup, then keyword matching against common buying-signal
+    vocabularies.
     """
     if not label:
         return '#6366f1'
@@ -2408,12 +2660,17 @@ def _attr_color(label):
         (('procurement', 'rfp', 'renewal'),                  '#f97316'),  # orange
         (('leadership', 'ciso', 'cio', 'change'),            '#a855f7'),  # violet
         (('direct', 'inquiry', 'engagement'),                '#f59e0b'),  # amber
+        (('governance', 'security.txt', 'rfc 9116', 'posture', 'bug bounty'), '#0ea5e9'),  # sky — security governance/posture
+        (('otx', 'threat intel', 'threat-intel', 'pulse', 'indicator', 'malware', 'domain activity'), '#f43f5e'),  # rose — threat-intel/OSINT
     ]
     for keywords, color in keyword_map:
         if any(kw in norm for kw in keywords):
             return color
-    # 4. fallback indigo
-    return '#6366f1'
+    # 4. deterministic distinct fallback — stable per label so unmapped
+    # categories still get differentiated colors instead of all collapsing to
+    # one indigo (which reads as "no color coding" on the attribution bar).
+    idx = sum(ord(c) for c in norm) % len(_ATTR_FALLBACK_PALETTE)
+    return _ATTR_FALLBACK_PALETTE[idx]
 
 
 def build_score_attribution_bar(scoring):
@@ -2571,8 +2828,6 @@ def build_web_fingerprint(technology):
         return ''
 
     # Display order + icons + accent colors
-    # v7.5.3 — added 'framework' (ASP.NET / Next.js / Django / etc.) which
-    # the v7.5 preflight emits but the v6.2-era renderer was ignoring.
     cat_meta = [
         ('frontend',         '🧩', 'Frontend libraries',      '#6366f1'),
         ('framework',        '🛠️', 'Framework',              '#0ea5e9'),
@@ -2606,10 +2861,10 @@ def build_web_fingerprint(technology):
         rendered_any = True
         badges = ''
         for it in items:
-            # v7.5.3 — accept both shapes: rich dict {name, version, confidence, evidence}
-            # OR plain string (the v7.5 preflight script emits strings). Previously the
-            # renderer dropped every string with `continue`, so category counts showed
-            # correctly but the badge body rendered empty. Backward compatible.
+            # v7.5.3 (parity with eliss-light) — accept both shapes: rich dict
+            # {name, version, confidence, evidence} OR plain string. Previously
+            # the renderer dropped every string with `continue`, so category
+            # counts showed correctly but the badge body rendered empty.
             if isinstance(it, str):
                 if not it.strip():
                     continue
@@ -3113,8 +3368,8 @@ def build_rocketreach_enrichment_tab2(data, data_level_hint=None):
                    '<thead><tr><th>Department</th><th style="text-align:right">Headcount</th></tr></thead><tbody>']
             for label, n in rows:
                 tbl.append(
-                    f'<tr><td>{escape_html(label)}</td>'
-                    f'<td style="text-align:right;font-variant-numeric:tabular-nums">{n}</td></tr>'
+                    f'<tr><td data-label="Department">{escape_html(label)}</td>'
+                    f'<td data-label="Headcount" style="text-align:right;font-variant-numeric:tabular-nums">{n}</td></tr>'
                 )
             tbl.append('</tbody></table></div>')
             dept_cell_html = head + ''.join(tbl)
@@ -3155,8 +3410,8 @@ def build_rocketreach_enrichment_tab2(data, data_level_hint=None):
                 arrow = '▲' if net > 0 else '▼'
                 color = '#15803d' if net > 0 else '#b91c1c'
                 tbl.append(
-                    f'<tr><td>{escape_html(dept)}</td>'
-                    f'<td style="text-align:right;color:{color};font-weight:700;'
+                    f'<tr><td data-label="Department">{escape_html(dept)}</td>'
+                    f'<td data-label="Net Change" style="text-align:right;color:{color};font-weight:700;'
                     f'font-variant-numeric:tabular-nums">{arrow} {abs(net)}</td></tr>'
                 )
             tbl.append('</tbody></table></div>')
@@ -3369,55 +3624,27 @@ def build_decision_tree(recommendations):
 # =============================================================================
 
 
-def _strip_sources_section(md_text):
-    """Heavy generator: delete the ``## RESEARCH SOURCES`` section from the
-    Tab 2 verbatim dossier. Extended-research output deliberately omits Tab 2
-    sources — Tab 1's Source Quality donut is the canonical surface.
+def _rewrite_sources_section(md_text, sources_dict):
+    """v7.3.0 — Strip the ``## RESEARCH SOURCES`` heading and its body from
+    Tab 2's `full_dossier_markdown`.
 
-    Returns md_text unchanged when no RESEARCH SOURCES heading is present.
+    Tab 1 already renders the ``Research Sources & Quality Breakdown``
+    panel — Source Quality donut + per-tier URL list — sourced from the
+    structured ``sources`` field. Repeating the same URLs in Tab 2 wastes
+    screen real estate and dilutes Tab 2's analyst-synthesis purpose.
+
+    The structured ``sources`` field stays untouched — Tab 1's panel still
+    consumes it. Future analysts can keep authoring a ``## RESEARCH
+    SOURCES`` section in `full_dossier_markdown` if they like; the renderer
+    silently drops it on Tab 2.
+
+    Returns the markdown with any ``## RESEARCH SOURCES`` section deleted,
+    or the original input unchanged if no SOURCES heading is found.
+
+    The ``sources_dict`` parameter is kept for backward-compatibility with
+    the v7.1.5 call signature but is no longer used.
     """
     if not md_text:
-        return md_text
-
-    header_re = re.compile(
-        r'^(#{2,3})\s*RESEARCH\s+SOURCES\s*$',
-        re.IGNORECASE | re.MULTILINE,
-    )
-    m = header_re.search(md_text)
-    if not m:
-        return md_text
-
-    section_start = m.start()
-    header_end = m.end()
-    next_heading_re = re.compile(r'^#{1,3}\s', re.MULTILINE)
-    next_match = next_heading_re.search(md_text, pos=header_end)
-    section_end = next_match.start() if next_match else len(md_text)
-
-    return md_text[:section_start].rstrip() + '\n\n' + md_text[section_end:].lstrip()
-
-
-def _rewrite_sources_section(md_text, sources_dict):
-    """v7.1.5 — Rewrite Tab 2's RESEARCH SOURCES section into the bulleted-list
-    style used by the canonical reference dossier.
-
-    Input markdown commonly emits each category as a single dot-separated
-    paragraph (e.g. ``**Person:** [link](url) [B] · [link](url) [B] · ...``).
-    Tab 2 renders that as a wall of inline links — readable but hard to
-    scan, and visually inconsistent with the Tab 1 source-quality donut.
-
-    The reference dossier uses a per-category bulleted list with one bare
-    URL per row + its tier badge. The renderer's auto-linkifier converts
-    each row into ``<a class="md-link">URL ↗</a> <span class="md-tier-X">X</span>``
-    automatically — no markdown-link syntax needed.
-
-    This helper finds the ``## RESEARCH SOURCES`` section in `md_text` and
-    rewrites it from ``sources_dict`` (the structured field that already
-    feeds the Tab 1 donut). Counts always match the donut as a result.
-
-    Returns the updated markdown (or the original unchanged if no
-    structured sources are available, or no SOURCES heading is found).
-    """
-    if not md_text or not isinstance(sources_dict, dict) or not sources_dict:
         return md_text
 
     # Locate the SOURCES heading (## RESEARCH SOURCES, or any case variant).
@@ -3432,52 +3659,12 @@ def _rewrite_sources_section(md_text, sources_dict):
     section_start = m.start()
     header_end = m.end()
 
-    # Find the next heading at the same level (or higher) to mark the
-    # section's end.
+    # Find the next heading at any level — the SOURCES section ends there.
     next_heading_re = re.compile(r'^#{1,3}\s', re.MULTILINE)
     next_match = next_heading_re.search(md_text, pos=header_end)
     section_end = next_match.start() if next_match else len(md_text)
 
-    # Build the replacement section.
-    out_lines = []
-    out_lines.append(m.group(0))  # preserve original heading style
-    out_lines.append('')
-    out_lines.append(
-        'Every URL below is tagged with its reliability tier. '
-        '**A** = authoritative (gov filings, company press, .gov sites). '
-        '**B** = reputable secondary (established press, primary LinkedIn '
-        'profiles, RocketReach-verified contacts). '
-        '**C** = aggregator / inferred (ZoomInfo, LeadIQ, analyst inference).'
-    )
-    out_lines.append('')
-
-    cat_order = ['person', 'company', 'technology', 'financial', 'compliance']
-    seen = set()
-    ordered_keys = [k for k in cat_order if k in sources_dict] + [
-        k for k in sources_dict.keys()
-        if k not in cat_order and not seen.add(k)
-    ]
-
-    for cat in ordered_keys:
-        urls = sources_dict.get(cat) or []
-        if not urls:
-            continue
-        out_lines.append(f'**{cat.title()} ({len(urls)}):**')
-        out_lines.append('')
-        for entry in urls:
-            if isinstance(entry, dict):
-                url = entry.get('url', '')
-                tier = (entry.get('tier') or 'C').upper()
-            else:
-                url = str(entry)
-                tier = 'C'
-            if not url:
-                continue
-            out_lines.append(f'- {url} [{tier}]')
-        out_lines.append('')
-
-    rewritten_section = '\n'.join(out_lines)
-    return md_text[:section_start] + rewritten_section + md_text[section_end:]
+    return md_text[:section_start] + md_text[section_end:]
 
 
 def render_dossier_markdown(md_text):
@@ -3530,12 +3717,18 @@ def render_dossier_markdown(md_text):
             # First row is header, second row is separator (ignore), rest are body
             header = table_rows[0]
             body = table_rows[2:] if len(table_rows) > 2 else []
+            # Plain-text header labels for the mobile stacked-card view (data-label).
+            labels = [re.sub(r'<[^>]+>', '', inline_md(c)).replace('"', '&quot;').strip() for c in header]
             out.append('<div class="md-table-wrap"><table class="md-table">')
             out.append('<thead><tr>' + ''.join(f'<th>{inline_md(c)}</th>' for c in header) + '</tr></thead>')
             if body:
                 out.append('<tbody>')
                 for row in body:
-                    out.append('<tr>' + ''.join(f'<td>{inline_md(c)}</td>' for c in row) + '</tr>')
+                    cells = ''.join(
+                        f'<td data-label="{labels[idx] if idx < len(labels) else ""}">{inline_md(c)}</td>'
+                        for idx, c in enumerate(row)
+                    )
+                    out.append('<tr>' + cells + '</tr>')
                 out.append('</tbody>')
             out.append('</table></div>')
         in_table = False
@@ -3572,9 +3765,13 @@ def render_dossier_markdown(md_text):
                 url = url[:-1]
             if not url:
                 return match.group(0)
+            # v7.3.0 — display label is the truncated host (e.g. `burlingtonnc.gov/…`)
+            # instead of the raw URL, so HOT-tier dossiers with 30+ inline citations
+            # don't read as a wall of underlined URLs. Full URL stays in href + title.
+            label = escape_html(_shorten_url_for_pill(url))
             return (
                 f'<a class="md-link" href="{url}" target="_blank" rel="noopener" '
-                f'title="{url}">{url}<span class="md-link-icon" aria-hidden="true">↗</span></a>'
+                f'title="{url}">{label}<span class="md-link-icon" aria-hidden="true">↗</span></a>'
                 + trailing
             )
         # The `amp;` comes from earlier HTML-escape of `&`; keep the regex tolerant.
@@ -3622,16 +3819,6 @@ def render_dossier_markdown(md_text):
         #   into an inline orange pill with a tooltip. The ::before CSS
         #   draws a plain "RR" text so the pill is readable even if the
         #   user's font doesn't include the superscript-R glyph.
-        # v7.4.1 — strip a redundant literal "RR " (or "RR " inside parens)
-        #   when it immediately precedes the ᴿᴿ glyph. Authors sometimes
-        #   write "RR ᴿᴿ" or "(RR ᴿᴿ)" expecting it to read as labelled
-        #   provenance, but the pill already carries an "RR" label so the
-        #   prefix renders as a visible duplicate. This guard normalizes
-        #   the source markdown before pill expansion. See
-        #   `references/dossier-schema.md` § "RR provenance pill — DO NOT
-        #   duplicate the label".
-        text = re.sub(r'(?<![A-Za-z])RR (?=ᴿᴿ)', '', text)
-        text = re.sub(r'(?<![A-Za-z])RR techstack (?=ᴿᴿ)', 'techstack ', text)
         text = re.sub(
             r'ᴿᴿ',
             '<span class="rr-pill" title="Sourced from RocketReach premium account (Tier-B, verified)"></span>',
@@ -3811,6 +3998,394 @@ def render_dossier_markdown(md_text):
     return '\n'.join(out)
 
 
+# =============================================================================
+#  v7.5 — Mom Test Discipline renderers (Operational Lens, Last-90 Timeline,
+#  Discovery Discipline, Research-vs-Ask, Rep's List of 3, Earlyvangelist,
+#  Deal Pre-mortem). Source-of-truth doctrine in references/mom-test-discipline.md.
+# =============================================================================
+
+# Soft-confidence pill mapping for signals whose evidence_strength is below
+# 'sourced'. Reuses the .rr-pill CSS shape (per memory feedback_eliss_render_verification_gate.md)
+# but tinted differently — yellow for inferred, gray for assumed — and rendered
+# WITHOUT the 'RR' ::before glyph by overriding content.
+_CONFIDENCE_PILL_STYLE = {
+    'inferred': ('Inferred', '#f59e0b', 'rgba(245,158,11,0.18)'),
+    'assumed':  ('Assumed',  '#94a3b8', 'rgba(148,163,184,0.18)'),
+}
+
+
+def _confidence_pill(strength):
+    """Return inline HTML pill for evidence_strength ∈ {'inferred','assumed'}.
+
+    Returns '' for 'sourced' / missing — the absence of a pill IS the signal
+    that the claim is sourced.
+    """
+    if not strength or strength == 'sourced':
+        return ''
+    cfg = _CONFIDENCE_PILL_STYLE.get(strength)
+    if not cfg:
+        return ''
+    label, color, bg = cfg
+    return (
+        f'<span class="rr-pill" style="background:{bg};color:{color};'
+        f'border-color:{color};box-shadow:none" title="{label} — evidence_strength={strength}">'
+        f'<span style="font-size:8px;letter-spacing:0.4px">{label[:3].upper()}</span></span>'
+    )
+
+
+# Symbol palette for the Mom Test signal taxonomy (p105, p118).
+_SIGNAL_SYMBOL_LABEL = {
+    '⚡': 'Pain',
+    '⚓': 'Goal',
+    '☐': 'Obstacle',
+    '⤴': 'Workaround',
+    '^': 'Background',
+    '☑': 'Purchasing',
+    '$': 'Money',
+    '♀': 'Key person',
+}
+
+
+def _signal_symbol_chip(symbol):
+    if not symbol:
+        return ''
+    label = _SIGNAL_SYMBOL_LABEL.get(symbol, '')
+    return (
+        f'<span class="mt-sym" title="{label}" '
+        f'style="display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;'
+        f'border-radius:4px;background:rgba(99,102,241,0.18);color:#6366f1;font-weight:700;'
+        f'margin-right:6px;font-size:11px">{escape_html(symbol)}</span>'
+    )
+
+
+def build_operational_lens_html(data, company):
+    """Tab 1 hero band — `data.industry_operational_lens` + `company.operating_model`
+    + `company.micro_segment` headline. Renders nothing if all three empty.
+    """
+    d = data.get('data') or {}
+    lens = _extract_value(d.get('industry_operational_lens'), '')
+    micro = _extract_value(company.get('micro_segment'), '')
+    op_model = _extract_value(company.get('operating_model'), '')
+    if not (lens or micro or op_model):
+        return ''
+    head = (
+        f'<div class="ol-segment">'
+        f'<span class="ol-segment-label">MICRO-SEGMENT</span>'
+        f'<span class="ol-segment-text">{escape_html(micro)}</span>'
+        f'</div>'
+    ) if micro else ''
+    body = (
+        f'<div class="ol-lens"><strong>Why this matters:</strong> {escape_html(lens)}</div>'
+    ) if lens else ''
+    om = (
+        f'<div class="ol-opmodel"><strong>Operating model:</strong> {escape_html(op_model)}</div>'
+    ) if op_model else ''
+    return (
+        f'<div class="ol-card">'
+        f'{head}{body}{om}'
+        f'</div>'
+    )
+
+
+def build_last_90_timeline_html(signals):
+    """Tab 1 — chronological timeline of dated real events in last 90 days.
+    Reuses the freshness-weighted bar shape used by svg_signal_timeline, but
+    renders simpler HTML cards for the new dataset shape
+    (signals.last_90_days_timeline[] = [{date, event, source_url, category, evidence_strength}]).
+    """
+    items = signals.get('last_90_days_timeline') or []
+    if not items:
+        return ''
+    rows = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        date = escape_html(_extract_value(it.get('date'), ''))
+        event = escape_html(_extract_value(it.get('event'), ''))
+        category = escape_html(_extract_value(it.get('category'), 'general'))
+        url = _extract_value(it.get('source_url'), '')
+        strength = _extract_value(it.get('evidence_strength'), 'sourced')
+        chip = render_evidence_chips([url], aria_context='timeline event') if url else ''
+        rows.append(
+            f'<div class="t90-row">'
+            f'<div class="t90-date">{date}</div>'
+            f'<div class="t90-body">'
+            f'<div class="t90-event">{event}{_confidence_pill(strength)}</div>'
+            f'<div class="t90-meta"><span class="t90-cat">{category}</span>{chip}</div>'
+            f'</div>'
+            f'</div>'
+        )
+    if not rows:
+        return ''
+    return f'<div class="t90-list">{"".join(rows)}</div>'
+
+
+def build_discovery_discipline_html(data):
+    """Tab 1 — two-column 'Don't ask' / 'Do ask' card with zoom_strategy badge
+    + anti_patterns footer. Renders collapsed-by-default per density caution.
+    """
+    dd = (data.get('data') or {}).get('discovery_discipline') or {}
+    bad = dd.get('bad_questions') or []
+    good = dd.get('good_questions') or []
+    anti = dd.get('anti_patterns') or []
+    zoom = _extract_value(dd.get('zoom_strategy'), '')
+    if not (bad or good or anti or zoom):
+        return ''
+    zoom_badge = ''
+    if zoom == 'zoom_now':
+        zoom_badge = ('<span class="dd-zoom dd-zoom-go" '
+                      'style="background:rgba(16,185,129,0.18);color:#10b981;'
+                      'padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px;'
+                      'letter-spacing:0.8px">SAFE TO ZOOM</span>')
+    elif zoom == 'confirm_category_first':
+        zoom_badge = ('<span class="dd-zoom dd-zoom-confirm" '
+                      'style="background:rgba(245,158,11,0.18);color:#f59e0b;'
+                      'padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px;'
+                      'letter-spacing:0.8px">CONFIRM CATEGORY FIRST</span>')
+
+    bad_items = []
+    for q in bad:
+        if not isinstance(q, dict):
+            continue
+        bad_items.append(
+            f'<li class="dd-bad-item">'
+            f'<div class="dd-q">&ldquo;{escape_html(_extract_value(q.get("question"), ""))}&rdquo;</div>'
+            f'<div class="dd-why"><strong>Why bad:</strong> {escape_html(_extract_value(q.get("why_bad"), ""))}</div>'
+            f'</li>'
+        )
+
+    good_items = []
+    for q in good:
+        if not isinstance(q, dict):
+            continue
+        anchor = escape_html(_extract_value(q.get('anchor_fact_ref'), ''))
+        template = escape_html(_extract_value(q.get('template'), ''))
+        good_items.append(
+            f'<li class="dd-good-item">'
+            f'<div class="dd-q">&ldquo;{escape_html(_extract_value(q.get("question"), ""))}&rdquo;</div>'
+            f'<div class="dd-anchor">'
+            + (f'<span class="dd-anchor-chip">⟵ {anchor}</span>' if anchor else '')
+            + (f'<span class="dd-template-chip">template: {template}</span>' if template else '')
+            + '</div>'
+            f'</li>'
+        )
+
+    anti_items = ''.join(f'<li>{escape_html(a)}</li>' for a in anti if a)
+    anti_html = f'<div class="dd-anti"><h4>Anti-patterns to watch in the live call</h4><ul>{anti_items}</ul></div>' if anti_items else ''
+
+    body = (
+        f'<div class="dd-zoom-row">{zoom_badge}</div>'
+        f'<div class="dd-grid">'
+        f'<div class="dd-col dd-col-bad"><h4>Do NOT ask</h4><ul class="dd-list">{"".join(bad_items)}</ul></div>'
+        f'<div class="dd-col dd-col-good"><h4>DO ask (anchored)</h4><ul class="dd-list">{"".join(good_items)}</ul></div>'
+        f'</div>'
+        f'{anti_html}'
+    )
+
+    summary_line = (
+        f'<div class="dd-summary-line">'
+        f'{len(good)} anchored questions, {len(bad)} to avoid'
+        + (' · ' + zoom_badge if zoom_badge else '')
+        + '</div>'
+    )
+    return (
+        f'<div class="dd-card">'
+        f'{summary_line}'
+        f'<div class="dd-body">{body}</div>'
+        f'</div>'
+    )
+
+
+def build_research_vs_ask_html(data):
+    """Tab 1 split panel — Already settled by research vs Must ask live.
+    The dossier's organizing spine per book p116. Always-open."""
+    rva = (data.get('data') or {}).get('research_vs_ask') or {}
+    settled = rva.get('settled_by_research') or []
+    live = rva.get('must_ask_live') or []
+    if not (settled or live):
+        return ''
+
+    settled_items = []
+    for item in settled:
+        if not isinstance(item, dict):
+            continue
+        fact = escape_html(_extract_value(item.get('fact'), ''))
+        url = _extract_value(item.get('source_url'), '')
+        chip = render_evidence_chips([url], aria_context='research source') if url else ''
+        settled_items.append(f'<li class="rva-settled-item">{fact}{chip}</li>')
+
+    live_items = []
+    for item in live:
+        if not isinstance(item, dict):
+            continue
+        q = escape_html(_extract_value(item.get('question'), ''))
+        why = escape_html(_extract_value(item.get('why_unsettleable'), ''))
+        live_items.append(
+            f'<li class="rva-live-item">'
+            f'<div class="rva-live-q">{q}</div>'
+            + (f'<div class="rva-live-why">{why}</div>' if why else '')
+            + '</li>'
+        )
+
+    return (
+        f'<div class="rva-card">'
+        f'<div class="rva-intro">The dossier is the desk research — these facts are already settled, so the live conversation goes elsewhere.</div>'
+        f'<div class="rva-grid">'
+        f'<div class="rva-col rva-col-settled"><h4>Already settled by research ({len(settled)})</h4><ul class="rva-list">{"".join(settled_items)}</ul></div>'
+        f'<div class="rva-col rva-col-live"><h4>Must ask live ({len(live)})</h4><ul class="rva-list">{"".join(live_items)}</ul></div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def build_rep_list_of_3_html(data):
+    """Tab 1 compact card — 3 prioritized live questions per persona.
+    Always-open per density caution (small, high-value)."""
+    items = (data.get('data') or {}).get('rep_list_of_3') or []
+    if not items:
+        return ''
+    cards = []
+    for i, q in enumerate(items, 1):
+        if not isinstance(q, dict):
+            continue
+        question = escape_html(_extract_value(q.get('question'), ''))
+        why = escape_html(_extract_value(q.get('why_it_matters'), ''))
+        role = escape_html(_extract_value(q.get('dmu_role'), ''))
+        role_chip = f'<span class="lof3-role">{role}</span>' if role else ''
+        cards.append(
+            f'<div class="lof3-card">'
+            f'<div class="lof3-num">Q{i}</div>'
+            f'<div class="lof3-body">'
+            f'<div class="lof3-q">{question}</div>'
+            + (f'<div class="lof3-why"><strong>Why it matters:</strong> {why}</div>' if why else '')
+            + role_chip
+            + '</div>'
+            f'</div>'
+        )
+    if not cards:
+        return ''
+    return f'<div class="lof3-grid">{"".join(cards)}</div>'
+
+
+def build_earlyvangelist_html(scoring):
+    """Tab 1 — 4-pip scorecard (has_problem / knows_problem / has_budget /
+    has_makeshift_solution). Collapsed-by-default per density caution.
+    Book p72.
+    """
+    ev = scoring.get('earlyvangelist') or {}
+    if not ev:
+        return ''
+    pips = [
+        ('has_problem',          'Has the problem'),
+        ('knows_problem',        'Knows the problem'),
+        ('has_budget',           'Has budget'),
+        ('has_makeshift_solution', 'Has a workaround'),
+    ]
+    count = ev.get('count')
+    if count is None:
+        count = sum(1 for k, _ in pips if isinstance(ev.get(k), dict) and ev[k].get('value'))
+    rationale = escape_html(_extract_value(ev.get('rationale'), ''))
+
+    pip_html = []
+    for key, label in pips:
+        entry = ev.get(key) or {}
+        value = bool(entry.get('value')) if isinstance(entry, dict) else False
+        evidence = escape_html(_extract_value(entry.get('evidence') if isinstance(entry, dict) else None, ''))
+        url = _extract_value(entry.get('source_url') if isinstance(entry, dict) else None, '')
+        chip = render_evidence_chips([url], aria_context='earlyvangelist evidence') if url else ''
+        color = '#10b981' if value else '#475569'
+        bg = 'rgba(16,185,129,0.18)' if value else 'rgba(71,85,105,0.18)'
+        icon = '●' if value else '○'
+        pip_html.append(
+            f'<div class="ev-pip" style="background:{bg};border-color:{color}">'
+            f'<div class="ev-pip-head">'
+            f'<span class="ev-pip-icon" style="color:{color}">{icon}</span>'
+            f'<span class="ev-pip-label">{label}</span>'
+            f'</div>'
+            + (f'<div class="ev-pip-evidence">{evidence}{chip}</div>' if evidence else '')
+            + '</div>'
+        )
+
+    summary = (
+        f'Earlyvangelist scorecard — <strong>{count}/4</strong> pips'
+        + (' · 4-pip = strongest enterprise buyer (book p72)' if count == 4 else '')
+        + (' · 3+ pip = HOT-worthy' if count == 3 else '')
+        + (' · 2-pip = WARM territory' if count == 2 else '')
+        + (' · 0–1 pip = real lead, not the buying moment' if count is not None and count <= 1 else '')
+    )
+
+    return (
+        f'<div class="ev-card">'
+        f'<div class="ev-summary-line">{summary}</div>'
+        f'<div class="ev-body">'
+        f'<div class="ev-pips">{"".join(pip_html)}</div>'
+        + (f'<div class="ev-rationale"><strong>Read:</strong> {rationale}</div>' if rationale else '')
+        + '</div>'
+        f'</div>'
+    )
+
+
+def build_deal_premortem_html(data):
+    """Tab 1 — if_lost + must_be_true_to_win cards (book p101).
+    Collapsed-by-default. Distinct from the existing build_pre_mortem_html
+    which renders the longer pre_mortem[] scenario list."""
+    dp = (data.get('data') or {}).get('deal_premortem') or {}
+    if_lost = _extract_value(dp.get('if_lost'), '')
+    must = dp.get('must_be_true_to_win') or []
+    if not (if_lost or must):
+        return ''
+    must_items = ''.join(f'<li>{escape_html(m)}</li>' for m in must if m)
+    return (
+        f'<div class="dpm-card">'
+        f'<div class="dpm-summary-line">If we lose, why; what must be true to win</div>'
+        f'<div class="dpm-body">'
+        f'<div class="dpm-grid">'
+        + (f'<div class="dpm-lost"><h4>If we lose this deal</h4><p>{escape_html(if_lost)}</p></div>' if if_lost else '')
+        + (f'<div class="dpm-win"><h4>What must be true to win</h4><ul>{must_items}</ul></div>' if must_items else '')
+        + '</div>'
+        + '</div>'
+        f'</div>'
+    )
+
+
+# =============================================================================
+#  v7.5 — Mom Test render-gate (depth-lint extensions)
+# =============================================================================
+
+# Banned phrasings from references/mom-test-discipline.md "Banned phrasings"
+# section. Substring scan, case-insensitive. Fires [depth-lint] opening_hook_generic.
+_MT_BANNED_PHRASINGS = (
+    'i noticed your company',
+    'are you currently struggling with',
+    'do you need better visibility into',
+    'would you ever consider',
+    'how important is security to your',
+    'i wanted to reach out because',
+    'hope this email finds you well',
+    'just checking in',
+    'i think you might benefit from',
+)
+
+
+def _mt_check_banned_phrasing(text):
+    if not text:
+        return None
+    low = text.lower()
+    for phrase in _MT_BANNED_PHRASINGS:
+        if phrase in low:
+            return phrase
+    return None
+
+
+def _mt_check_industry_language(lens_text, vertical_section_terms):
+    """Returns count of vertical-playbook customer-language terms present in
+    the operational lens text. Caller compares to threshold (≥2)."""
+    if not lens_text or not vertical_section_terms:
+        return 0
+    low = lens_text.lower()
+    return sum(1 for term in vertical_section_terms if term.lower() in low)
+
+
 def generate_html_report(data, peer_scores=None):
     """Generate the full HTML report from structured JSON data."""
     scoring = data.get('scoring', {})
@@ -3927,9 +4502,16 @@ def generate_html_report(data, peer_scores=None):
     # Complete Intelligence Dossier (verbatim markdown rendered to HTML)
     full_dossier_md = data.get('full_dossier_markdown', '')
 
-    # Extended-research mode: drop Tab 2's RESEARCH SOURCES section entirely.
-    # Tab 1's Source Quality donut remains the canonical source surface.
-    full_dossier_md = _strip_sources_section(full_dossier_md)
+    # v7.1.5 — Rewrite Tab 2 RESEARCH SOURCES from the structured `sources`
+    # field into a bulleted-list format that matches the Best-dossier style.
+    # The original markdown style (single dot-separated paragraph per
+    # category) renders as a wall of inline links that's hard to scan; the
+    # bulleted-list style auto-linkifies each URL on its own row with its
+    # tier badge, matching the Tab 1 Source Quality donut's structure.
+    # The structured `data['sources']` is the source of truth — counts will
+    # always match the donut, and we don't have to parse possibly-stale
+    # markdown.
+    full_dossier_md = _rewrite_sources_section(full_dossier_md, data.get('sources') or {})
 
     # v5.5: Auto-correct stale version stamps in the dossier markdown so Tab 2
     # always matches the current analyst version, even if the markdown was
@@ -4029,7 +4611,7 @@ def generate_html_report(data, peer_scores=None):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ELISS Dossier — {escape_html(lead.get('name', 'Unknown'))} @ {escape_html(company.get('name', 'Unknown'))}</title>
+<title>ELISS Dossier — {escape_html(_extract_value(lead.get('name'), 'Unknown'))} @ {escape_html(_extract_value(company.get('name'), 'Unknown'))}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
@@ -4053,7 +4635,7 @@ body{{font-family:'Inter',system-ui,sans-serif;background:#080c14;color:#e2e8f0;
 .verdict-body{{flex:1;padding:18px 22px;min-width:0}}
 .verdict-headline{{font-size:15px;font-weight:600;color:#e2e8f0;line-height:1.45;margin:0 0 8px 0;display:block}}
 .verdict-insight{{font-size:13px;color:#94a3b8;line-height:1.55;margin:0 0 8px 0;display:block}}
-.verdict-next{{font-size:12px;color:#818cf8;font-weight:600;line-height:1.5;margin:0;display:block}}
+.verdict-next{{font-size:12px;color:#f1f5f9;font-weight:600;line-height:1.5;margin:0;display:block}}
 
 /* Score Hero with radar + gauge */
 .score-hero{{background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:24px;margin-bottom:16px}}
@@ -4079,19 +4661,19 @@ body{{font-family:'Inter',system-ui,sans-serif;background:#080c14;color:#e2e8f0;
 .dim-max{{font-size:11px;font-weight:400;color:#94a3b8}}
 .dim-track{{height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden}}
 .dim-fill{{height:100%;border-radius:3px;transition:width 0.8s ease}}
-.dim-conf{{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px}}
+.dim-conf{{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;white-space:nowrap}}
 .neg-mods{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
-.neg-tag{{font-size:11px;padding:3px 10px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:12px;font-weight:500}}
+.neg-tag{{font-size:11px;padding:3px 10px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:12px;font-weight:500;white-space:nowrap}}
 
 /* Validation rules block */
 .validation-list{{display:flex;flex-direction:column;gap:8px}}
-.val-rule{{padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:0 8px 8px 0;font-size:13px;display:flex;gap:12px;align-items:center}}
-.val-tag{{font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:6px;white-space:nowrap}}
-.val-desc{{color:#94a3b8;font-size:13px}}
+.val-rule{{padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:0 8px 8px 0;font-size:13px;display:flex;gap:12px;align-items:flex-start}}
+.val-tag{{font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:6px;white-space:nowrap;flex:0 0 auto}}
+.val-desc{{color:#94a3b8;font-size:13px;flex:1;min-width:0}}
 .validation-clean{{padding:12px 16px;background:rgba(34,197,94,0.06);border-left:3px solid #22c55e;border-radius:0 8px 8px 0;color:#86efac;font-size:13px;font-weight:500}}
 
 /* Sections */
-.section{{background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:24px 28px;margin-bottom:16px}}
+.section{{background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:24px 28px;margin-bottom:16px;scroll-margin-top:80px}}
 .section-title{{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#6366f1;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
 
 /* Executive Brief */
@@ -4102,7 +4684,7 @@ body{{font-family:'Inter',system-ui,sans-serif;background:#080c14;color:#e2e8f0;
 .field{{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);align-items:baseline}}
 .field-label{{font-size:11px;font-weight:600;color:#94a3b8;min-width:100px;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0}}
 .field-value{{font-size:13px;color:#e2e8f0}}
-.field-tag{{font-size:9px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle}}
+.field-tag{{font-size:9px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;white-space:nowrap}}
 .tag-confirmed{{background:rgba(34,197,94,0.12);color:#22c55e}}
 .tag-estimated{{background:rgba(245,158,11,0.12);color:#f59e0b}}
 .tag-inferred{{background:rgba(59,130,246,0.12);color:#3b82f6}}
@@ -4126,7 +4708,7 @@ body{{font-family:'Inter',system-ui,sans-serif;background:#080c14;color:#e2e8f0;
 .heatmap-framework{{display:flex;flex-direction:column;gap:4px;justify-content:center}}
 .heatmap-name{{font-size:15px;font-weight:700;color:#e2e8f0}}
 .heatmap-urgency{{font-size:10px;color:#94a3b8;font-weight:500}}
-.heatmap-pressure{{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:0.5px;border-radius:8px;padding:4px 8px}}
+.heatmap-pressure{{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:0.5px;border-radius:8px;padding:4px 8px;white-space:nowrap}}
 .heatmap-dot{{width:8px;height:8px;border-radius:50%;display:inline-block}}
 .heatmap-cell{{padding:8px 10px;background:rgba(255,255,255,0.02);border-radius:6px}}
 .heatmap-cell-label{{font-size:9px;font-weight:700;letter-spacing:1px;color:#94a3b8;margin-bottom:2px}}
@@ -4144,9 +4726,9 @@ body{{font-family:'Inter',system-ui,sans-serif;background:#080c14;color:#e2e8f0;
 .signal-item{{padding:12px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)}}
 .signal-positive{{border-left:3px solid #22c55e}}
 .signal-negative{{border-left:3px solid #ef4444}}
-.signal-main{{display:flex;gap:8px;align-items:center;margin-bottom:4px}}
-.signal-badge{{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}}
-.signal-text{{font-size:13px;font-weight:500}}
+.signal-main{{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}}
+.signal-badge{{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;flex:0 0 auto;align-self:center;white-space:nowrap}}
+.signal-text{{font-size:13px;font-weight:500;flex:1;min-width:0;overflow-wrap:anywhere}}
 .signal-meta{{font-size:11px;color:#94a3b8;display:flex;gap:12px}}
 .signal-age{{color:#94a3b8}}
 .conf-tag{{font-weight:600;font-size:10px;text-transform:uppercase}}
@@ -4158,7 +4740,7 @@ h3{{font-size:12px;font-weight:600;color:#94a3b8;margin:14px 0 8px;text-transfor
 .readiness-badge{{flex:0 0 auto;padding:16px 20px;border-radius:12px;border:1px solid;text-align:center;min-width:120px;display:flex;flex-direction:column;justify-content:center}}
 .readiness-num{{font-size:32px;font-weight:700;line-height:1}}
 .readiness-denom{{font-size:16px;opacity:0.6;font-weight:500}}
-.readiness-label{{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;opacity:0.85}}
+.readiness-label{{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;opacity:0.85;white-space:nowrap}}
 .readiness-basis{{flex:1;padding:14px 16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:10px}}
 .readiness-basis-title{{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}}
 .readiness-basis-text{{font-size:13px;color:#cbd5e1;line-height:1.5}}
@@ -4209,7 +4791,7 @@ h3{{font-size:12px;font-weight:600;color:#94a3b8;margin:14px 0 8px;text-transfor
    than its cell. Without this override, .likelihood-badge and
    .threat-badge inherit the global white-space:nowrap and silently
    overflow their <td>, forcing a horizontal scroller on the wrapper. */
-.comp-matrix .likelihood-badge,.comp-matrix .threat-badge{{white-space:normal;text-align:center;max-width:100%;box-sizing:border-box}}
+.comp-matrix .likelihood-badge,.comp-matrix .threat-badge{{white-space:nowrap;text-align:center;box-sizing:border-box}}
 
 /* v5.6: Ghost Stakeholders */
 .ghost-card{{margin-bottom:12px;padding:14px 16px;background:rgba(139,92,246,0.04);border:1px solid rgba(139,92,246,0.18);border-radius:10px;border-left:3px solid #8b5cf6}}
@@ -4217,7 +4799,7 @@ h3{{font-size:12px;font-weight:600;color:#94a3b8;margin:14px 0 8px;text-transfor
 .ghost-icon{{font-size:20px}}
 .ghost-role{{font-size:14px;font-weight:600;color:#e2e8f0}}
 .ghost-meta{{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}}
-.ghost-status,.ghost-arrival{{font-size:11px;padding:2px 8px;border-radius:5px;background:rgba(139,92,246,0.12);color:#c4b5fd;font-weight:500}}
+.ghost-status,.ghost-arrival{{font-size:11px;padding:2px 8px;border-radius:5px;background:rgba(139,92,246,0.12);color:#c4b5fd;font-weight:500;white-space:nowrap}}
 .ghost-body{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
 .ghost-field-label{{font-size:10px;font-weight:600;color:#8b5cf6;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}}
 .ghost-field-text{{font-size:12px;color:#cbd5e1;line-height:1.45}}
@@ -4285,8 +4867,8 @@ td{{padding:10px 12px;border-bottom:1px solid #1e293b;color:#94a3b8}}
 .outreach-card{{padding:18px 20px;margin:14px 0;background:rgba(15,23,42,0.55);border:1px solid rgba(99,102,241,0.18);border-radius:14px;page-break-inside:avoid;break-inside:avoid}}
 .outreach-card-head{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}}
 .outreach-meta{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
-.slot-pill{{font-size:10px;font-weight:700;letter-spacing:1.2px;padding:4px 9px;border-radius:6px;background:#6366f1;color:#fff;text-transform:uppercase}}
-.voice-badge{{font-size:10px;font-weight:700;letter-spacing:1.2px;padding:4px 9px;border-radius:6px;border:1px solid;text-transform:uppercase}}
+.slot-pill{{font-size:10px;font-weight:700;letter-spacing:1.2px;padding:4px 9px;border-radius:6px;background:#6366f1;color:#fff;text-transform:uppercase;white-space:nowrap}}
+.voice-badge{{font-size:10px;font-weight:700;letter-spacing:1.2px;padding:4px 9px;border-radius:6px;border:1px solid;text-transform:uppercase;white-space:nowrap}}
 .template-name{{font-size:13px;font-weight:600;color:#e2e8f0}}
 .copy-btn{{font-family:inherit;font-size:11px;font-weight:600;letter-spacing:0.6px;padding:6px 13px;border-radius:6px;background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);cursor:pointer;text-transform:uppercase;transition:all 0.15s ease}}
 .copy-btn:hover{{background:rgba(99,102,241,0.32);color:#fff}}
@@ -4297,6 +4879,9 @@ td{{padding:10px 12px;border-bottom:1px solid #1e293b;color:#94a3b8}}
 .subj-label{{display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.4px;color:#818cf8;margin-right:8px;text-transform:uppercase}}
 .outreach-body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.65;color:#cbd5e1;white-space:pre-wrap;background:rgba(2,6,23,0.4);padding:14px 16px;border-radius:8px;margin:0 0 12px 0;border:1px solid rgba(99,102,241,0.08)}}
 .outreach-rationale{{padding:10px 12px;background:rgba(99,102,241,0.05);border-radius:6px;border-left:2px solid rgba(99,102,241,0.4)}}
+.rationale-label{{font-size:10px;font-weight:700;letter-spacing:1.2px;color:#818cf8;margin-bottom:4px;text-transform:uppercase}}
+.rationale-text{{font-size:12px;color:#94a3b8;line-height:1.55}}
+
 /* v7.4 — Demo Playbook (persona-anchored AD360+Log360 scripts) */
 .demo-head{{padding:14px 16px;margin:6px 0 14px 0;background:rgba(15,23,42,0.55);border:1px solid rgba(99,102,241,0.18);border-radius:12px;display:flex;flex-direction:column;gap:10px}}
 .demo-persona,.demo-hook{{display:flex;flex-direction:column;gap:4px}}
@@ -4307,7 +4892,7 @@ td{{padding:10px 12px;border-bottom:1px solid #1e293b;color:#94a3b8}}
 .demo-product-head{{font-size:14px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:10px}}
 .demo-section-title{{font-size:10px;font-weight:700;letter-spacing:1.4px;color:#94a3b8;text-transform:uppercase;margin:14px 0 8px 0}}
 .demo-moment{{padding:11px 13px;margin:8px 0;background:rgba(2,6,23,0.4);border:1px solid rgba(99,102,241,0.10);border-radius:8px}}
-.demo-moment-num{{display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.2px;padding:3px 8px;border-radius:5px;text-transform:uppercase;margin-bottom:6px}}
+.demo-moment-num{{display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.2px;padding:3px 8px;border-radius:5px;text-transform:uppercase;margin-bottom:6px;white-space:nowrap}}
 .demo-moment-title{{font-size:13px;color:#e2e8f0;font-weight:600;margin-bottom:6px}}
 .demo-moment-why{{font-size:12px;color:#cbd5e1;line-height:1.55;margin-bottom:6px}}
 .demo-moment-why strong{{color:#818cf8;font-weight:600}}
@@ -4321,8 +4906,120 @@ td{{padding:10px 12px;border-bottom:1px solid #1e293b;color:#94a3b8}}
 .demo-cta{{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:10px 12px;background:rgba(99,102,241,0.07);border-radius:8px;border-left:3px solid #6366f1}}
 .demo-cta-label{{flex:0 0 auto;font-size:10px;font-weight:700;letter-spacing:1.2px;color:#818cf8;text-transform:uppercase;padding-top:1px}}
 .demo-cta-text{{font-size:12.5px;color:#e2e8f0;line-height:1.55;font-weight:500}}
-.rationale-label{{font-size:10px;font-weight:700;letter-spacing:1.2px;color:#818cf8;margin-bottom:4px;text-transform:uppercase}}
-.rationale-text{{font-size:12px;color:#94a3b8;line-height:1.55}}
+.demo-q-anchor{{font-size:11px;color:#a3a3a3;font-style:italic;margin-top:3px;line-height:1.45;padding-left:14px}}
+
+/* v7.5 — Mom Test Discipline renderers */
+.ol-card{{padding:18px 20px;margin:8px 0 18px 0;background:linear-gradient(135deg,rgba(99,102,241,0.06) 0%,rgba(99,102,241,0.02) 100%);border:1px solid rgba(99,102,241,0.22);border-left:4px solid #6366f1;border-radius:12px}}
+.ol-segment{{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}}
+.ol-segment-label{{font-size:9px;font-weight:800;letter-spacing:1.4px;padding:3px 8px;border-radius:5px;background:rgba(99,102,241,0.18);color:#818cf8;text-transform:uppercase;flex:0 0 auto;white-space:nowrap}}
+.ol-segment-text{{font-size:14px;color:#e2e8f0;font-weight:700;line-height:1.5}}
+.ol-lens{{font-size:13.5px;color:#cbd5e1;line-height:1.7;margin:10px 0}}
+.ol-lens strong{{color:#818cf8;font-weight:600}}
+.ol-opmodel{{font-size:12.5px;color:#94a3b8;line-height:1.65;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(99,102,241,0.18)}}
+.ol-opmodel strong{{color:#a5b4fc;font-weight:600}}
+
+.t90-list{{display:flex;flex-direction:column;gap:6px;margin-top:6px}}
+.t90-row{{display:grid;grid-template-columns:88px 1fr;gap:14px;padding:9px 12px;background:rgba(15,23,42,0.45);border:1px solid rgba(99,102,241,0.10);border-radius:8px}}
+.t90-date{{font-size:11px;color:#818cf8;font-weight:700;letter-spacing:0.4px;font-family:'JetBrains Mono',ui-monospace,monospace}}
+.t90-event{{font-size:13px;color:#e2e8f0;line-height:1.5;font-weight:500}}
+.t90-meta{{display:flex;gap:8px;align-items:center;margin-top:4px;font-size:10px;color:#94a3b8}}
+.t90-cat{{padding:2px 6px;background:rgba(99,102,241,0.12);color:#a5b4fc;border-radius:4px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;font-size:9px;white-space:nowrap}}
+
+.dd-card{{margin:8px 0;background:rgba(15,23,42,0.45);border:1px solid rgba(99,102,241,0.18);border-radius:12px;overflow:hidden}}
+.dd-summary-line{{padding:10px 16px;font-size:12px;color:#94a3b8;font-weight:500;background:rgba(99,102,241,0.04);display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(99,102,241,0.10)}}
+.dd-body{{padding:14px 16px}}
+.dd-zoom-row{{margin-bottom:12px}}
+.dd-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+.dd-col{{padding:12px 14px;border-radius:8px}}
+.dd-col-bad{{background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.22)}}
+.dd-col-good{{background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.22)}}
+.dd-col h4{{font-size:10px;font-weight:800;letter-spacing:1.4px;margin:0 0 10px 0;text-transform:uppercase}}
+.dd-col-bad h4{{color:#ef4444}}
+.dd-col-good h4{{color:#10b981}}
+.dd-list{{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}}
+.dd-q{{font-size:12.5px;color:#e2e8f0;line-height:1.55;font-weight:500}}
+.dd-why{{font-size:11px;color:#94a3b8;line-height:1.5;margin-top:4px}}
+.dd-why strong{{color:#fca5a5;font-weight:600}}
+.dd-anchor{{font-size:10.5px;color:#a3a3a3;margin-top:4px;font-style:italic;display:flex;gap:8px;flex-wrap:wrap}}
+.dd-anchor-chip{{padding:1px 6px;background:rgba(99,102,241,0.10);color:#a5b4fc;border-radius:4px;font-style:normal}}
+.dd-template-chip{{padding:1px 6px;background:rgba(16,185,129,0.10);color:#6ee7b7;border-radius:4px;font-style:normal;font-size:9px;text-transform:uppercase;letter-spacing:0.4px;font-weight:700}}
+.dd-anti{{margin-top:14px;padding:10px 12px;background:rgba(245,158,11,0.06);border-left:3px solid #f59e0b;border-radius:6px}}
+.dd-anti h4{{font-size:10px;font-weight:800;letter-spacing:1.4px;color:#f59e0b;margin:0 0 6px 0;text-transform:uppercase}}
+.dd-anti ul{{list-style:none;padding:0;margin:0}}
+.dd-anti li{{font-size:11.5px;color:#cbd5e1;padding:3px 0 3px 14px;position:relative;line-height:1.55}}
+.dd-anti li::before{{content:"⚠";color:#f59e0b;position:absolute;left:0}}
+
+.rva-card{{padding:14px 16px;margin:8px 0;background:rgba(15,23,42,0.45);border:1px solid rgba(99,102,241,0.18);border-radius:12px}}
+.rva-intro{{font-size:12px;color:#94a3b8;font-style:italic;margin-bottom:12px;line-height:1.55}}
+.rva-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+.rva-col{{padding:12px 14px;border-radius:8px}}
+.rva-col-settled{{background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.22)}}
+.rva-col-live{{background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22)}}
+.rva-col h4{{font-size:10px;font-weight:800;letter-spacing:1.4px;margin:0 0 10px 0;text-transform:uppercase}}
+.rva-col-settled h4{{color:#818cf8}}
+.rva-col-live h4{{color:#f59e0b}}
+.rva-list{{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}}
+.rva-settled-item{{font-size:12px;color:#cbd5e1;line-height:1.5;padding:4px 0}}
+.rva-live-item{{padding:6px 0;border-bottom:1px solid rgba(245,158,11,0.10)}}
+.rva-live-q{{font-size:12.5px;color:#e2e8f0;line-height:1.5;font-weight:500}}
+.rva-live-why{{font-size:10.5px;color:#94a3b8;margin-top:3px;font-style:italic;line-height:1.5}}
+
+.lof3-grid{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px}}
+.lof3-card{{padding:12px 14px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.18);border-radius:10px;display:flex;flex-direction:column}}
+.lof3-num{{font-size:9px;font-weight:800;letter-spacing:1.4px;color:#818cf8;text-transform:uppercase;margin-bottom:6px}}
+.lof3-body{{display:flex;flex-direction:column;gap:6px}}
+.lof3-q{{font-size:12.5px;color:#e2e8f0;line-height:1.5;font-weight:500}}
+.lof3-why{{font-size:11px;color:#94a3b8;line-height:1.55}}
+.lof3-why strong{{color:#a5b4fc;font-weight:600}}
+.lof3-role{{align-self:flex-start;font-size:9px;font-weight:700;letter-spacing:0.8px;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.14);color:#a5b4fc;text-transform:uppercase;margin-top:4px;white-space:nowrap}}
+
+.ev-card{{margin:8px 0;background:rgba(15,23,42,0.45);border:1px solid rgba(99,102,241,0.18);border-radius:12px;overflow:hidden}}
+.ev-summary-line{{padding:10px 16px;font-size:12px;color:#94a3b8;font-weight:500;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.10)}}
+.ev-summary-line strong{{color:#10b981}}
+.ev-body{{padding:14px 16px}}
+.ev-pips{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}}
+.ev-pip{{padding:10px 12px;border-radius:8px;border:1px solid}}
+.ev-pip-head{{display:flex;align-items:center;gap:8px;margin-bottom:6px}}
+.ev-pip-icon{{font-size:18px;line-height:1}}
+.ev-pip-label{{font-size:11px;color:#cbd5e1;font-weight:600;letter-spacing:0.4px}}
+.ev-pip-evidence{{font-size:10.5px;color:#94a3b8;line-height:1.5}}
+.ev-rationale{{margin-top:12px;padding:10px 12px;background:rgba(16,185,129,0.06);border-left:3px solid #10b981;border-radius:6px;font-size:12px;color:#cbd5e1;line-height:1.55}}
+.ev-rationale strong{{color:#10b981;font-weight:600}}
+
+.dpm-card{{margin:8px 0;background:rgba(15,23,42,0.45);border:1px solid rgba(99,102,241,0.18);border-radius:12px;overflow:hidden}}
+.dpm-summary-line{{padding:10px 16px;font-size:12px;color:#94a3b8;font-weight:500;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.10)}}
+.dpm-body{{padding:14px 16px}}
+.dpm-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+.dpm-lost{{padding:12px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22);border-radius:8px}}
+.dpm-win{{padding:12px 14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.22);border-radius:8px}}
+.dpm-lost h4{{font-size:10px;font-weight:800;letter-spacing:1.4px;margin:0 0 8px 0;color:#f59e0b;text-transform:uppercase}}
+.dpm-win h4{{font-size:10px;font-weight:800;letter-spacing:1.4px;margin:0 0 8px 0;color:#10b981;text-transform:uppercase}}
+.dpm-lost p{{font-size:12.5px;color:#cbd5e1;line-height:1.6;margin:0}}
+.dpm-win ul{{margin:0;padding-left:18px}}
+.dpm-win li{{font-size:12px;color:#cbd5e1;line-height:1.6;padding:2px 0}}
+
+.vfwpa-box{{margin-top:12px;padding:14px 16px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.22);border-radius:10px}}
+.vfwpa-head{{font-size:10px;font-weight:800;letter-spacing:1.4px;color:#818cf8;text-transform:uppercase;margin-bottom:10px}}
+.vfwpa-posture{{font-size:12px;color:#cbd5e1;line-height:1.6;padding:8px 10px;margin-bottom:10px;background:rgba(99,102,241,0.05);border-left:2px solid #6366f1;border-radius:5px}}
+.vfwpa-posture strong{{color:#a5b4fc;font-weight:600}}
+.vfwpa-beat{{display:grid;grid-template-columns:80px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid rgba(99,102,241,0.08)}}
+.vfwpa-beat:last-child{{border-bottom:none}}
+.vfwpa-label{{font-size:9px;font-weight:800;letter-spacing:1.2px;color:#a5b4fc;text-transform:uppercase;padding-top:2px}}
+.vfwpa-text{{font-size:12.5px;color:#cbd5e1;line-height:1.6}}
+
+.sig-counter{{font-size:11.5px;color:#94a3b8;margin-bottom:10px;padding:6px 10px;background:rgba(15,23,42,0.45);border-radius:6px;line-height:1.5}}
+.sig-counter-help{{color:#64748b;font-style:italic;font-size:10.5px}}
+.sig-ow{{margin-top:8px;padding:6px 8px;background:rgba(2,6,23,0.4);border-radius:6px;border-left:2px solid rgba(99,102,241,0.30);display:flex;flex-direction:column;gap:3px}}
+.sig-ow-line{{font-size:11px;color:#cbd5e1;line-height:1.5;display:flex;gap:6px;align-items:flex-start}}
+.sig-ow-sym{{display:inline-block;width:16px;color:#818cf8;font-weight:700;flex:0 0 16px;text-align:center}}
+.sig-ow-lbl{{color:#a5b4fc;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px;flex:0 0 92px;white-space:nowrap}}
+.sig-ow-val{{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}}
+
+@media (max-width:720px){{
+  .dd-grid,.rva-grid,.dpm-grid{{grid-template-columns:1fr}}
+  .lof3-grid{{grid-template-columns:1fr}}
+  .ev-pips{{grid-template-columns:1fr 1fr}}
+}}
 
 /* Sources */
 .source-cat{{font-size:12px;color:#94a3b8;margin:4px 0}}
@@ -4487,6 +5184,32 @@ img,svg,table,pre,code{{max-width:100%}}
   .tier-label,.conf-label,.icp-label{{font-size:10.5px;padding:5px 11px;height:26px;letter-spacing:0.3px}}
   .tier-label{{font-size:11px;letter-spacing:1px}}
 
+  /* MICRO-SEGMENT and similar label-pill rows: stack vertically so the
+     description gets full width instead of wrapping 1-2 words per line. */
+  .ol-segment{{flex-direction:column;gap:6px}}
+  .ol-segment-label{{align-self:flex-start}}
+
+  /* Sub-10px labels are hard to read on phones — enforce a 10px floor. */
+  .ol-segment-label,.dim-conf,.field-tag,.lof3-num,.lof3-role,.t90-cat,
+  .tag-confirmed,.tag-estimated,.tag-inferred{{font-size:10px}}
+
+  /* Wide data tables -> stacked label:value cards (no horizontal scroll).
+     Each row becomes a card; the column header rides along via data-label. */
+  .md-table-wrap,.dossier-verbatim .md-table-wrap{{overflow-x:visible;border:none;margin:8px 0 12px}}
+  .md-table,.dossier-verbatim .md-table{{display:block;min-width:0;width:100%;font-size:12px}}
+  .md-table thead{{display:none}}
+  .md-table tbody,.md-table tr,.md-table td{{display:block;width:100%}}
+  .md-table tr{{border:1px solid #1e293b;border-radius:8px;margin-bottom:10px;background:#0f172a;overflow:hidden}}
+  .md-table tbody tr:nth-child(even) td{{background:transparent}}
+  .md-table td{{display:flex;gap:10px;align-items:baseline;padding:8px 12px;border:none;border-bottom:1px solid #1e293b;text-align:left !important;overflow-wrap:anywhere}}
+  .md-table tr td:last-child{{border-bottom:none}}
+  .md-table td::before{{content:attr(data-label);flex:0 0 38%;color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;line-height:1.45}}
+  .md-table td:not([data-label])::before{{content:none}}
+  /* comp-matrix uses table-layout:fixed + % column widths on desktop;
+     reset both so its cells go full-width as stacked cards on mobile. */
+  .comp-matrix{{table-layout:auto}}
+  .comp-matrix th,.comp-matrix td{{width:auto !important}}
+
   /* Footer */
   .report-footer{{font-size:10.5px;padding:14px 0}}
 }}
@@ -4546,6 +5269,44 @@ img,svg,table,pre,code{{max-width:100%}}
   .demo-obj-a{{color:#374151}}
   .demo-cta{{background:#eef2ff}}
   .demo-cta-text{{color:#0f172a}}
+  .demo-q-anchor{{color:#6b7280}}
+  /* v7.5 light-theme overrides */
+  .ol-card{{background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 100%);border-color:#c7d2fe}}
+  .ol-segment-text{{color:#0f172a}}
+  .ol-lens{{color:#374151}}
+  .ol-opmodel{{color:#4b5563;border-top-color:#c7d2fe}}
+  .t90-row{{background:#f9fafb;border-color:#e5e7eb}}
+  .t90-event{{color:#0f172a}}
+  .t90-cat{{background:#ede9fe;color:#6d28d9}}
+  .dd-card,.rva-card,.ev-card,.dpm-card{{background:#f9fafb;border-color:#e5e7eb}}
+  .dd-summary-line,.ev-summary-line,.dpm-summary-line{{background:#f5f3ff;color:#4b5563;border-bottom-color:#e5e7eb}}
+  .dd-col-bad{{background:#fef2f2;border-color:#fecaca}}
+  .dd-col-good{{background:#f0fdf4;border-color:#bbf7d0}}
+  .dd-q{{color:#0f172a}}
+  .dd-why,.dd-anti li{{color:#4b5563}}
+  .dd-anchor-chip{{background:#ede9fe;color:#5b21b6}}
+  .dd-template-chip{{background:#dcfce7;color:#166534}}
+  .dd-anti{{background:#fffbeb;border-left-color:#f59e0b}}
+  .rva-col-settled{{background:#eef2ff;border-color:#c7d2fe}}
+  .rva-col-live{{background:#fffbeb;border-color:#fde68a}}
+  .rva-settled-item{{color:#374151}}
+  .rva-live-q{{color:#0f172a}}
+  .rva-live-why{{color:#6b7280}}
+  .lof3-card{{background:#eef2ff;border-color:#c7d2fe}}
+  .lof3-q{{color:#0f172a}}
+  .lof3-why{{color:#4b5563}}
+  .lof3-role{{background:#ede9fe;color:#5b21b6}}
+  .ev-pip-label{{color:#374151}}
+  .ev-pip-evidence{{color:#6b7280}}
+  .ev-rationale{{background:#f0fdf4;border-left-color:#10b981;color:#374151}}
+  .dpm-lost{{background:#fffbeb;border-color:#fde68a}}
+  .dpm-win{{background:#f0fdf4;border-color:#bbf7d0}}
+  .dpm-lost p,.dpm-win li{{color:#374151}}
+  .vfwpa-box{{background:#eef2ff;border-color:#c7d2fe}}
+  .vfwpa-posture,.vfwpa-text{{color:#374151}}
+  .sig-counter{{background:#f9fafb;color:#4b5563}}
+  .sig-ow{{background:#f5f3ff;border-left-color:#a5b4fc}}
+  .sig-ow-line{{color:#374151}}
   .heatmap-cell,.heatmap-cell-text{{background:#fff;color:#374151}}
   th{{background:#f1f5f9;color:#0f172a}}
   td{{color:#4b5563;border-bottom-color:#e5e7eb}}
@@ -4678,10 +5439,13 @@ img,svg,table,pre,code{{max-width:100%}}
 .dossier-verbatim .md-h4:hover .md-anchor{{opacity:1}}
 .dossier-verbatim .md-anchor:hover{{color:#818cf8}}
 
-/* v5.7 — Auto-linked URLs in prose */
-.dossier-verbatim .md-link{{color:#a5b4fc;text-decoration:none;border-bottom:1px dotted rgba(165,180,252,0.4);transition:all 0.15s;word-break:break-word}}
-.dossier-verbatim .md-link:hover{{color:#c7d2fe;border-bottom-color:#c7d2fe;border-bottom-style:solid}}
-.dossier-verbatim .md-link-icon{{font-size:0.85em;margin-left:2px;opacity:0.6;vertical-align:super;line-height:0}}
+/* v5.7 / v7.3.0 — Auto-linked URLs in prose render as compact host-only pills.
+   The full URL stays in href + title; only the visible label is the truncated
+   host (e.g. `burlingtonnc.gov/…`). Pill style keeps HOT-tier dossiers
+   readable when 30+ inline citations would otherwise be a wall of underlined URLs. */
+.dossier-verbatim .md-link{{display:inline-block;padding:1px 8px;margin:0 2px;border-radius:10px;background:rgba(99,102,241,0.10);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25);font-size:0.85em;text-decoration:none;line-height:1.6;white-space:nowrap;vertical-align:baseline;transition:all 0.15s}}
+.dossier-verbatim .md-link:hover{{background:rgba(99,102,241,0.18);color:#c7d2fe;border-color:#818cf8}}
+.dossier-verbatim .md-link-icon{{font-size:0.85em;margin-left:3px;opacity:0.7}}
 
 /* v5.7 — Confidence/status pills in dossier prose: [CONFIRMED] [ESTIMATED] [INFERRED] */
 .dossier-verbatim .md-pill{{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9.5px;font-weight:700;letter-spacing:0.5px;margin:0 2px;vertical-align:baseline;line-height:1.5;white-space:nowrap}}
@@ -4896,13 +5660,13 @@ img,svg,table,pre,code{{max-width:100%}}
 .dt-cond{{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border-left:3px solid;border-radius:0 8px 8px 0}}
 .dt-tag{{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:1.2px;padding:3px 8px;border-radius:4px;flex-shrink:0;line-height:1.3;margin-top:1px}}
 .dt-tag-action{{box-shadow:0 1px 3px rgba(0,0,0,0.2)}}
-.dt-cond-text{{font-size:12.5px;color:#e2e8f0;line-height:1.5;font-weight:500}}
+.dt-cond-text{{font-size:12.5px;color:#e2e8f0;line-height:1.5;font-weight:500;flex:1;min-width:0}}
 .dt-arrow{{font-size:18px;font-weight:700;text-align:center;line-height:1;margin:-4px 0 -4px 0;opacity:0.7}}
 .dt-action{{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:rgba(99,102,241,0.05);border:1px solid;border-radius:8px}}
-.dt-action-text{{font-size:12.5px;color:#f1f5f9;line-height:1.5;font-weight:500}}
+.dt-action-text{{font-size:12.5px;color:#f1f5f9;line-height:1.5;font-weight:500;flex:1;min-width:0}}
 .dt-outcome{{display:flex;align-items:flex-start;gap:8px;padding:8px 14px;font-size:11.5px;color:#94a3b8;line-height:1.5;font-style:italic}}
 .dt-outcome-icon{{font-size:14px;flex-shrink:0;line-height:1.3}}
-.dt-outcome-text{{flex:1}}
+.dt-outcome-text{{flex:1;min-width:0}}
 
 /* Responsive: scenario cards and fingerprint grid stack on narrower screens */
 @media (max-width: 900px) {{
@@ -4988,7 +5752,8 @@ img,svg,table,pre,code{{max-width:100%}}
 
   /* v5.7 — Pills, tier badges, auto-links in print */
   #tab-dossier .md-anchor{{display:none}}
-  #tab-dossier .md-link{{color:#4338ca;border-bottom-color:#4338ca}}
+  #tab-dossier .md-link{{background:rgba(67,56,202,0.07);color:#4338ca;border-color:rgba(67,56,202,0.35)}}
+  #tab-dossier .md-link:hover{{background:rgba(67,56,202,0.14);border-color:#4338ca}}
   #tab-dossier .md-pill-confirmed{{background:#d1fae5;color:#047857;border-color:#059669}}
   #tab-dossier .md-pill-estimated{{background:#fef3c7;color:#b45309;border-color:#d97706}}
   #tab-dossier .md-pill-inferred{{background:#f3f4f6;color:#4b5563;border-color:#9ca3af}}
@@ -5075,11 +5840,23 @@ img,svg,table,pre,code{{max-width:100%}}
     </div>
   </div>
 
+  <!-- v7.5 Mom Test: Industry Operational Lens — always-open framing hero band -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Industry Operational Lens</div>{html}</div>' if html else '')(build_operational_lens_html(data, company))}
+
   <!-- Executive Brief -->
   <div class="section">
     <div class="section-title">Executive Brief</div>
     <div class="exec-brief">{escape_html(_resolve_executive_brief(data))}</div>
   </div>
+
+  <!-- v7.5 Mom Test: Research-vs-Ask spine — the dossier's organizing principle -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Research-settled vs Must-ask-live</div>{html}</div>' if html else '')(build_research_vs_ask_html(data))}
+
+  <!-- v7.5 Mom Test: Rep's List of 3 — prioritized live questions per persona -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Rep&rsquo;s List of 3 — live questions to prioritize</div>{html}</div>' if html else '')(build_rep_list_of_3_html(data))}
+
+  <!-- v7.5 Mom Test: Last-90-Days Timeline — dated real events -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Last 90 Days — Dated Events</div>{html}</div>' if html else '')(build_last_90_timeline_html(signals))}
 
   <!-- Validation Rules -->
   <div class="section">
@@ -5098,6 +5875,15 @@ img,svg,table,pre,code{{max-width:100%}}
     <div class="section-title">Deal Execution Risks</div>
     {build_deal_execution_risks_html(scoring)}
   </div>
+
+  <!-- v7.5 Mom Test: Earlyvangelist 4-pip scorecard (collapsed-by-default) -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Earlyvangelist Scorecard</div>{html}</div>' if html else '')(build_earlyvangelist_html(scoring))}
+
+  <!-- v7.5 Mom Test: Deal Pre-mortem if_lost / must_be_true (collapsed-by-default) -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Deal Pre-mortem — book p101</div>{html}</div>' if html else '')(build_deal_premortem_html(data))}
+
+  <!-- v7.5 Mom Test: Discovery Discipline good/bad question card (collapsed-by-default) -->
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Discovery Discipline — Do ask, Do NOT ask</div>{html}</div>' if html else '')(build_discovery_discipline_html(data))}
 
   <!-- Intent Donut -->
   <div class="section">
@@ -5126,7 +5912,7 @@ img,svg,table,pre,code{{max-width:100%}}
       <div class="section-title">Company Profile</div>
       <div class="field"><span class="field-label">Company</span><span class="field-value">{escape_html(_extract_value(company.get('name'), ''))}</span></div>
       <div class="field"><span class="field-label">Industry</span><span class="field-value">{industry_display}{(' — ' + escape_html(_extract_value(company.get('sub_industry')))) if _extract_value(company.get('sub_industry')) else ''}</span></div>
-      <div class="field"><span class="field-label">Employees</span><span class="field-value">{employees_display}<span class="field-tag tag-{str(company.get('employees_confidence', 'estimated')).lower()}">{escape_html(str(company.get('employees_confidence', 'ESTIMATED')))}</span></span></div>
+      <div class="field"><span class="field-label">Employees</span><span class="field-value">{employees_display}<span class="field-tag tag-{str(_extract_value(company.get('employees_confidence'), 'estimated')).lower()}">{escape_html(str(_extract_value(company.get('employees_confidence'), 'ESTIMATED')))}</span></span></div>
       <div class="field"><span class="field-label">Revenue</span><span class="field-value">{revenue_display}<span class="field-tag tag-estimated">EST</span></span></div>
       <div class="field"><span class="field-label">HQ</span><span class="field-value">{escape_html(_extract_value(company.get('hq'), ''))}</span></div>
       <div class="field"><span class="field-label">Ownership</span><span class="field-value">{escape_html(_extract_value(company.get('ownership'), ''))}</span></div>
@@ -5165,7 +5951,7 @@ img,svg,table,pre,code{{max-width:100%}}
       <div class="field"><span class="field-label">Deal Authority</span><span class="field-value">{escape_html(_extract_value(budget.get('deal_authority'), 'Unknown'))}</span></div>
       <div class="field"><span class="field-label">Deal Cycle</span><span class="field-value">{escape_html(_extract_value(budget.get('deal_cycle_months'), 'Unknown'))} months</span></div>
     </div>
-    {"<div class='strategy-note' style='margin-top:12px'><strong>Basis:</strong> " + escape_html(budget.get('calculation_basis', '')) + "</div>" if budget.get('calculation_basis') else ""}
+    {"<div class='strategy-note' style='margin-top:12px'><strong>Basis:</strong> " + escape_html(_extract_value(budget.get('calculation_basis'), '')) + "</div>" if _extract_value(budget.get('calculation_basis')) else ""}
     <div style="margin-top:16px">
       {svg_budget_waterfall(budget, company=company)}
     </div>
@@ -5176,6 +5962,14 @@ img,svg,table,pre,code{{max-width:100%}}
     <div class="section-title">Decision-Making Unit</div>
     {svg_dmu_orgchart(org)}
     {f'<div class="strategy-note" style="margin-top:12px"><strong>Multi-Thread Strategy:</strong> {escape_html(org.get("multi_thread_strategy", ""))}</div>' if org.get('multi_thread_strategy') else ''}
+    {(lambda owner: (
+        '<div class="strategy-note" style="margin-top:12px;border-left:3px solid #f59e0b;background:rgba(245,158,11,0.06)">'
+        '<strong style="color:#f59e0b">Representative pain-owner (book p97):</strong> '
+        f'{escape_html(_extract_value(owner.get("name"), ""))} &mdash; {escape_html(_extract_value(owner.get("title"), ""))}.'
+        f' {escape_html(_extract_value(owner.get("why"), ""))}'
+        f'{render_evidence_chips([owner.get("source_url")], aria_context="pain owner") if owner.get("source_url") else ""}'
+        '</div>'
+    ) if isinstance(owner, dict) and owner.get('name') else '')(org.get('representative_pain_owner') or {})}
   </div>
 
   <!-- v5.7: DMU + Ghost Stakeholder Map -->
@@ -5183,6 +5977,11 @@ img,svg,table,pre,code{{max-width:100%}}
     <div class="section-title">Decision-Making Unit &amp; Ghost Stakeholder Map</div>
     {svg_dmu_ghost_map(org, lead=lead)}
   </div>
+
+  <!-- v5.5: Local Autonomy — surfaces subsidiary buying authority. Silently
+       omitted when org_intelligence.local_autonomy is missing or has no
+       classification. -->
+  {(lambda html: f'<div class="section"><div class="section-title">Local Autonomy</div>{html}</div>' if html else '')(build_local_autonomy_card(org))}
 
   <!-- Compliance Heatmap -->
   <div class="section">
@@ -5260,6 +6059,10 @@ img,svg,table,pre,code{{max-width:100%}}
     <div class="section-title">Rep Readiness Checklist</div>
     {build_rep_readiness_html(data.get('rep_readiness_checklist', []))}
   </div>
+
+  <!-- v7.0+: Personalization Hooks — Subagent D Layer 7 outputs. Silently
+       omitted when lead.personalization_hooks is missing or empty. -->
+  {(lambda html: f'<div class="section"><div class="section-title">Personalization Hooks</div>{html}</div>' if html else '')(build_personalization_hooks_card(lead))}
 
   </div><!-- /tab-summary -->
 
@@ -5805,6 +6608,91 @@ def validate_dossier(data):
     return errors
 
 
+# ---------------------------------------------------------------------------
+# v7.6 — Empty-sources salvage (backfill from inline narrative citations)
+# ---------------------------------------------------------------------------
+# When synthesis fills the prose with inline citation URLs but leaves the
+# structured `sources` object empty (observed on resumed/retried syntheses),
+# the Source Quality donut + Sources list + Tab 2 RESEARCH SOURCES all render
+# empty states even though the dossier *is* sourced. This salvage harvests those
+# URLs (with their adjacent [A]/[B]/[C] tier markers when present, else a domain
+# heuristic), buckets them, and repopulates `data['sources']` so the structured
+# field and the narrative cannot silently diverge. No-op once sources exist.
+_SRC_URL_RE = re.compile(r'https?://[^\s)\]\[<>"\'`]+')
+_SRC_TIER_C_HOSTS = (
+    'rocketreach', 'zoominfo', 'linkedin.', 'crunchbase', 'apollo.io', 'lusha',
+    'glassdoor', 'indeed.', 'facebook.', 'twitter.', 'x.com', 'instagram.',
+    'youtube.', 'wikipedia.', 'medium.com', 'reddit.', 'theorg.com', 'pitchbook',
+)
+_SRC_PERSON_HOSTS = (
+    'linkedin.', 'rocketreach', 'zoominfo', 'apollo.io', 'lusha', 'theorg.com',
+    'twitter.', 'x.com', 'github.',
+)
+_SRC_COMPLIANCE_HINTS = (
+    'cmmc', 'nist', 'hipaa', 'iso27', 'iso-27', 'soc2', 'soc-2', 'fedramp',
+    'dfars', 'itar', 'gdpr', 'ccpa', '/cui', 'compliance',
+)
+_SRC_FINANCIAL_HINTS = (
+    'sec.gov', 'investor', 'annualreport', 'annual-report', '10-k',
+    'earnings', 'crunchbase', 'pitchbook', 'bloomberg',
+)
+_SRC_TECH_HINTS = ('builtwith', 'stackshare', 'g2.com', 'capterra', 'github.', 'techstack')
+
+
+def _src_infer_tier(host):
+    h = host.lower()
+    if (h.endswith('.gov') or h.endswith('.mil') or h.endswith('.edu')
+            or 'sec.gov' in h or 'usaspending' in h or 'sam.gov' in h):
+        return 'A'
+    if any(k in h for k in _SRC_TIER_C_HOSTS):
+        return 'C'
+    return 'B'
+
+
+def _src_bucket(host, url_l):
+    if any(k in url_l for k in _SRC_COMPLIANCE_HINTS):
+        return 'compliance'
+    if any(k in host for k in _SRC_PERSON_HOSTS):
+        return 'person'
+    if any(k in url_l for k in _SRC_FINANCIAL_HINTS):
+        return 'financial'
+    if any(k in host for k in _SRC_TECH_HINTS) or 'technology' in url_l:
+        return 'technology'
+    return 'company'
+
+
+def _backfill_sources_from_markdown(data):
+    """Repopulate an empty data['sources'] from inline citations in
+    full_dossier_markdown. Returns the number of URLs added; 0 when sources are
+    already populated or no URLs are found. Never raises on bad input."""
+    sources = data.get('sources')
+    if not isinstance(sources, dict):
+        sources = {}
+    if sum(len(v) for v in sources.values() if isinstance(v, list)) > 0:
+        return 0  # already populated -- don't disturb curated attribution
+    md = data.get('full_dossier_markdown')
+    if not isinstance(md, str) or not md.strip():
+        return 0
+    buckets = {}
+    seen = set()
+    for m in _SRC_URL_RE.finditer(md):
+        url = m.group(0).rstrip('.,;:!?"\'`)]}')
+        norm = url.rstrip('/').lower()
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        tail = md[m.end():m.end() + 8]
+        tm = re.match(r'\s*\)?\s*\[([ABC])\]', tail)
+        host = url.split('://', 1)[-1].split('/', 1)[0].lower()
+        url_l = url.lower()
+        tier = tm.group(1) if tm else _src_infer_tier(host)
+        buckets.setdefault(_src_bucket(host, url_l), []).append({'url': url, 'tier': tier})
+    if not buckets:
+        return 0
+    data['sources'] = buckets
+    return sum(len(v) for v in buckets.values())
+
+
 def main():
     _reconfigure_stdio_utf8()
     parser = argparse.ArgumentParser(description=f'ELISS Report Generator v{ELISS_VERSION}')
@@ -5868,6 +6756,18 @@ def main():
     if not args.no_enrich:
         data = _try_enrich_with_rocketreach(data)
 
+    # v7.6 -- Salvage empty source attribution from inline narrative citations
+    # BEFORE rendering + depth-lint, so the Source Quality donut, Sources list,
+    # Tab 2 RESEARCH SOURCES, and the depth-lint source count all reflect the
+    # URLs the synthesis actually cited (see _backfill_sources_from_markdown).
+    try:
+        _bf = _backfill_sources_from_markdown(data)
+        if _bf:
+            print(f"  [sources-backfill] structured sources were empty; harvested "
+                  f"{_bf} inline citation URL(s) from the narrative", file=sys.stderr)
+    except Exception as _e:  # never break a render
+        print(f"  [sources-backfill] internal error: {_e}", file=sys.stderr)
+
     # Load peer scores if log provided
     peer_scores = load_peer_scores(args.log) if args.log else []
     # Exclude self from peer set (match by email or name)
@@ -5886,8 +6786,14 @@ def main():
         except (json.JSONDecodeError, OSError):
             pass
 
-    company_slug = re.sub(r'[^a-zA-Z0-9]', '_', data.get('company', {}).get('name', 'Unknown'))
-    name_parts = data.get('lead', {}).get('name', 'Unknown').split()
+    # Unwrap structured-value name dicts (`{value, confidence, tier, ...}`) and
+    # tolerate `None`/missing company/lead — `re.sub` and `.split()` both crash on
+    # non-strings, and a malformed JSON would otherwise abort before any HTML
+    # was written.
+    company_name = _extract_value((data.get('company') or {}).get('name'), 'Unknown') or 'Unknown'
+    lead_name = _extract_value((data.get('lead') or {}).get('name'), 'Unknown') or 'Unknown'
+    company_slug = re.sub(r'[^a-zA-Z0-9]', '_', company_name)
+    name_parts = lead_name.split()
     last_name = name_parts[-1] if name_parts else 'Unknown'
     date_str = data.get('meta', {}).get('generated', datetime.now().strftime('%Y-%m-%d'))
     base = f"ELISS_{company_slug}_{last_name}_{date_str}"
@@ -5952,18 +6858,26 @@ def main():
         _emit_narrative_density_warnings(data)
     except Exception as e:  # pragma: no cover — lint must never break a run
         print(f"[depth-lint] narrative-density internal error: {e}", file=sys.stderr)
+    try:
+        _emit_mom_test_warnings(data)
+    except Exception as e:  # pragma: no cover — lint must never break a run
+        print(f"[depth-lint] mom-test internal error: {e}", file=sys.stderr)
 
 
-# Narrative-density floors — eliss-light edition (halved vs /eliss because the
-# light edition runs single-RR-pass + 6 targeted searches, not the 4-subagent
-# fan-out, so honest output is ~half the citation density).
+# Narrative-density floors (counted in the markdown source, not the rendered HTML).
+# Source patterns are documented in SKILL.md → "Tab 2 Narrative Style".
+# Tiered: HOT requires gold-standard density (Coppell-tier); COLD waived.
 _NARRATIVE_FLOORS = {
-    'HOT':  {'md-link': 10, 'md-tier': 20, 'md-pill': 3, 'md-callout': 3, 'md-blockquote': 1},
-    'WARM': {'md-link':  5, 'md-tier': 10, 'md-pill': 1, 'md-callout': 1, 'md-blockquote': 0},
-    'COOL': {'md-link':  2, 'md-tier':  5, 'md-pill': 0, 'md-callout': 0, 'md-blockquote': 0},
+    'HOT':  {'md-link': 20, 'md-tier': 40, 'md-pill': 6, 'md-callout': 6, 'md-blockquote': 1},
+    'WARM': {'md-link': 10, 'md-tier': 20, 'md-pill': 3, 'md-callout': 3, 'md-blockquote': 1},
+    'COOL': {'md-link':  5, 'md-tier': 10, 'md-pill': 1, 'md-callout': 1, 'md-blockquote': 0},
     'COLD': {'md-link':  0, 'md-tier':  0, 'md-pill': 0, 'md-callout': 0, 'md-blockquote': 0},
 }
 
+# Callout-keyword set kept in sync with CALLOUT_KIND at :3466 — the lint counts
+# any `**Word ...:**` paragraph opener whose first alpha-only word is one of
+# these. Matches both exact aliases ("why") and verbose forms ("why this is HOT
+# now") thanks to the v7.3.0 first-word fallback in the parser.
 _CALLOUT_KEYWORD_SET = frozenset({
     'why', 'mitigation', 'resolution', 'action', 'next', 'trigger',
     'earliest', 'watch', 'risk', 'note', 'key', 'insight',
@@ -5971,51 +6885,84 @@ _CALLOUT_KEYWORD_SET = frozenset({
 
 
 def _count_narrative_density(md):
+    """Tally the five narrative-density patterns in `full_dossier_markdown`.
+
+    Returns a dict of counts. Skip entirely if `md` is empty/missing.
+    """
     if not md or not isinstance(md, str):
         return {'md-link': 0, 'md-tier': 0, 'md-pill': 0, 'md-callout': 0, 'md-blockquote': 0}
+
+    # Bare URL (md-link). Stop at whitespace + common URL-terminators.
     md_link = len(re.findall(r'https?://[^\s)\]\[<>"\'`]+', md))
+
+    # Source-tier badge: space + [A]/[B]/[C] (avoids hitting [Author], [Action], etc.)
     md_tier = len(re.findall(r'\s\[[ABC]\]', md))
+
+    # Status pill: [CONFIRMED] / [ESTIMATED] / [INFERRED]
     md_pill = len(re.findall(r'\[(CONFIRMED|ESTIMATED|INFERRED)\]', md))
+
+    # Callout opener: any line that starts with **<word ...>:** where the first
+    # alpha-only word matches a callout keyword. Mirrors the parser at :3475.
     md_callout = 0
     for m in re.finditer(r'(?m)^\*\*([^:\*]{1,80}):\*\*', md):
         label_lc = m.group(1).strip().lower()
         first_word_m = re.match(r'^([a-z]+)', label_lc)
         if first_word_m and first_word_m.group(1) in _CALLOUT_KEYWORD_SET:
             md_callout += 1
+
+    # Blockquote: any line starting with `> ` (Markdown blockquote syntax)
     md_blockquote = len(re.findall(r'(?m)^>\s', md))
-    return {'md-link': md_link, 'md-tier': md_tier, 'md-pill': md_pill,
-            'md-callout': md_callout, 'md-blockquote': md_blockquote}
+
+    return {
+        'md-link': md_link, 'md-tier': md_tier, 'md-pill': md_pill,
+        'md-callout': md_callout, 'md-blockquote': md_blockquote,
+    }
 
 
 def _emit_narrative_density_warnings(data):
-    """Soft-warn when full_dossier_markdown narrative density falls below the
-    tier-keyed floor (halved vs /eliss for the light edition)."""
+    """Soft-warn (stderr) when full_dossier_markdown narrative density falls
+    below the tier-keyed floor. Documented in SKILL.md → 'Tab 2 Narrative
+    Style — gold-standard pattern'. Never blocks rendering.
+
+    Floors (HOT shown; halved per tier-step down):
+        md-link bare URLs           ≥ 20
+        md-tier  [A]/[B]/[C]        ≥ 40
+        md-pill  [CONFIRMED] etc.   ≥ 6
+        md-callout (Why/Mitig/etc)  ≥ 6
+        md-blockquote (`> ...`)     ≥ 1
+    """
     scoring = data.get('scoring', {}) or {}
     tier = (scoring.get('tier') or '').upper().strip()
     floor = _NARRATIVE_FLOORS.get(tier)
     if not floor:
         return
+
     md = data.get('full_dossier_markdown') or ''
     if not md.strip():
-        return
+        return  # No markdown narrative → other lints already cover this
+
     counts = _count_narrative_density(md)
-    breaches = [(n, counts[n], floor[n]) for n in
-                ('md-link', 'md-tier', 'md-pill', 'md-callout', 'md-blockquote')
-                if counts[n] < floor[n]]
+    breaches = [
+        (name, counts[name], floor[name])
+        for name in ('md-link', 'md-tier', 'md-pill', 'md-callout', 'md-blockquote')
+        if counts[name] < floor[name]
+    ]
     if not breaches:
         return
+
     print("", file=sys.stderr)
-    print(f"[depth-lint] {tier} lead has thin Tab 2 narrative density (light-edition floor):",
-          file=sys.stderr)
-    hints = {
-        'md-link': "add inline `https://...` URL citations after each claim",
-        'md-tier': "append `[A]` / `[B]` / `[C]` source-tier markers",
-        'md-pill': "label data figures with `[CONFIRMED]` / `[ESTIMATED]` / `[INFERRED]`",
-        'md-callout': "use `**Why:** …` / `**Mitigation:** …` paragraph openers",
-        'md-blockquote': "open key sections with `> thesis` blockquotes",
-    }
+    print(f"[depth-lint] {tier} lead has thin Tab 2 narrative density:", file=sys.stderr)
     for name, got, want in breaches:
-        print(f"  • {name}={got} < {tier} floor of {want} ({hints[name]})", file=sys.stderr)
+        hint = {
+            'md-link': "add inline `https://...` URL citations after each claim",
+            'md-tier': "append `[A]` / `[B]` / `[C]` source-tier markers after factual claims",
+            'md-pill': "label data figures with `[CONFIRMED]` / `[ESTIMATED]` / `[INFERRED]`",
+            'md-callout': "use `**Why:** …` / `**Mitigation:** …` / `**Action:** …` paragraph openers",
+            'md-blockquote': "open key sections with `> thesis line` blockquotes",
+        }[name]
+        print(f"  • {name}={got} < {tier} floor of {want} ({hint})", file=sys.stderr)
+    print(f"[depth-lint] (See SKILL.md 'Tab 2 Narrative Style — gold-standard pattern' "
+          f"for the eight markdown patterns the renderer transforms.)", file=sys.stderr)
 
 
 def _emit_research_depth_warnings(data):
@@ -6096,15 +7043,20 @@ def _emit_research_depth_warnings(data):
             f"the procurement lead)"
         )
 
-    # v7.1.6 — CONTACT-VERIFY LINT
-    # When the inbound lead has an email but no LinkedIn URL AND no
-    # LinkedIn-direct search appears in sources_actually_checked[], the
-    # analyst likely defaulted the contact to Influencer/Unknown without
-    # actually trying to find them. This regressed contact-role accuracy
-    # in the Remington Hospitality / Dylan Horner dossier (v7.1.5),
-    # which shipped with the contact in an "unknown" slot because the
-    # canonical `site:linkedin.com/in/` query was never executed. Fires
-    # for ALL tiers — the cost of a missed contact verification is
+    # v7.1.6 / v7.3.0 — CONTACT-VERIFY LINT
+    # When the inbound lead has an email but no LinkedIn URL AND key
+    # verification searches are missing, the analyst likely defaulted the
+    # contact to Influencer/Unknown without actually trying to find them.
+    # Two probes are now checked (v7.3.0):
+    #   1. The canonical LinkedIn-direct search `site:linkedin.com/in/`
+    #      (caught the v7.1.5 Remington/Dylan-Horner regression).
+    #   2. The email-localpart probe — flags the failure mode where the
+    #      contact has a hyphenated/compound surname that the email
+    #      truncates (e.g. `pmensah` for "Perry Amo-Mensah" whose LinkedIn
+    #      vanity slug is `pamomens`). Quoted-surname Google queries can
+    #      rank these profiles below the first 10 results; the
+    #      email-localpart angle is the canonical fallback.
+    # Fires for ALL tiers — the cost of a missed contact verification is
     # tier-independent.
     lead = data.get('lead', {}) or {}
     has_email = bool(lead.get('email'))
@@ -6119,15 +7071,33 @@ def _emit_research_depth_warnings(data):
             for entry in sources_checked
             if isinstance(entry, dict)
         )
+        email_localpart = lead.get('email', '').split('@', 1)[0].lower() if lead.get('email') else ''
+        localpart_probe_logged = bool(email_localpart) and any(
+            email_localpart in str(entry.get('source') or '').lower()
+            for entry in sources_checked
+            if isinstance(entry, dict)
+        )
+        contact_name = lead.get('name', '<contact>')
         if not linkedin_direct_logged:
-            contact_name = lead.get('name', '<contact>')
             warnings.append(
                 f"lead.linkedin is unset and no LinkedIn-direct search appears "
                 f"in sources_actually_checked[] (recommended canonical query: "
                 f"`site:linkedin.com/in/ \"{contact_name}\" \"<company>\"`). "
                 f"The contact's role drives Fit/title scoring — verify before "
                 f"finalizing. (See SKILL.md Mandatory Free-OSINT Checklist "
-                f"item #9 — three-query block.)"
+                f"item #9 — four-query block.)"
+            )
+        if not localpart_probe_logged and email_localpart:
+            warnings.append(
+                f"lead.linkedin is unset and the email-localpart probe "
+                f"`\"{email_localpart}\" \"<company_short>\"` is missing from "
+                f"sources_actually_checked[]. This is Item #9 query (d) — "
+                f"the canonical fallback when the LinkedIn vanity slug "
+                f"compresses a hyphenated/compound surname (e.g. `pamomens` "
+                f"for \"Perry Amo-Mensah\" with email `pmensah@...`). "
+                f"Quoted-surname searches miss these; the localpart angle "
+                f"catches them. (See SKILL.md v7.3.0 Item #9 query (d) and "
+                f"the contact-disambiguation reminder.)"
             )
 
     if warnings:
@@ -6174,8 +7144,8 @@ def _emit_research_depth_warnings(data):
             "demo_playbook{} — unlocks 'Demo Playbook' card with "
             "persona-anchored AD360 + Log360 scripts (opening hook, "
             "3 value moments per product, discovery questions, top "
-            "objections, CTA). See references/dossier-schema.md "
-            "demo_playbook section. (v7.4+)"
+            "objections, CTA). See references/dossier-template.md "
+            "DEMO PLAYBOOK section. (v7.4+)"
         )
     if missing_optional and tier in ('HOT', 'WARM'):
         # Only nudge for tiers worth the extra effort; COOL/COLD leads
@@ -6188,6 +7158,194 @@ def _emit_research_depth_warnings(data):
         print(f"[depth-lint] (See SKILL.md 'Wave 1 Infographics' — "
               f"high-value visual additions for HOT/WARM leads.)",
               file=sys.stderr)
+
+
+# =============================================================================
+#  v7.5 — Mom Test depth-lint warnings
+#  Four new lints per references/mom-test-discipline.md, tiered by HOT/WARM/COOL:
+#    [depth-lint] discovery_question_unanchored
+#    [depth-lint] opening_hook_generic
+#    [depth-lint] industry_language_missing
+#    [depth-lint] timeline_empty_for_hot_lead
+#  BLOCKS on HOT (regenerate trigger), SOFT on WARM, INFO on COOL.
+# =============================================================================
+
+# Reads vertical-playbook.md once at import time. The lint pulls customer-language
+# terms from each industry section's "Customer language" line to check
+# data.industry_operational_lens against. Falls back to empty mapping if the
+# file isn't present (e.g. in stripped-down test fixtures).
+def _load_vertical_customer_language():
+    try:
+        import os, re as _re
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '..', 'references', 'vertical-playbook.md')
+        if not os.path.isfile(path):
+            return {}
+        with open(path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        sections = {}
+        current = None
+        for line in text.splitlines():
+            m = _re.match(r'^##\s+(.+?)\s*$', line)
+            if m:
+                current = m.group(1).strip()
+                sections[current] = []
+                continue
+            if current and '**Customer language.**' in line:
+                terms = _re.findall(r'\*([^*]+?)\*', line)
+                sections[current].extend(t.strip() for t in terms if t.strip())
+        return sections
+    except Exception:
+        return {}
+
+
+_VERTICAL_CUSTOMER_LANGUAGE = None
+
+
+def _vertical_terms_for(industry):
+    """Return the customer-language term list for the section best matching
+    the prospect's industry. Substring match on section heading + industry."""
+    global _VERTICAL_CUSTOMER_LANGUAGE
+    if _VERTICAL_CUSTOMER_LANGUAGE is None:
+        _VERTICAL_CUSTOMER_LANGUAGE = _load_vertical_customer_language()
+    if not _VERTICAL_CUSTOMER_LANGUAGE or not industry:
+        return []
+    ind_low = industry.lower()
+    # Lightweight industry-to-section keyword mapping. The vertical-playbook
+    # section headings are: Banking & Financial Services, Oil & Gas / Refining,
+    # Aviation / Airports, Healthcare, Public Sector / Government,
+    # Manufacturing, Retail, Education (K-12 and Higher Ed), Telecom.
+    keymap = {
+        'banking': 'Banking', 'finance': 'Banking', 'financial': 'Banking',
+        'oil': 'Oil & Gas', 'gas': 'Oil & Gas', 'refin': 'Oil & Gas',
+        'avia': 'Aviation', 'airport': 'Aviation', 'airline': 'Aviation',
+        'health': 'Healthcare', 'hospital': 'Healthcare', 'medical': 'Healthcare',
+        'government': 'Public Sector', 'public sector': 'Public Sector', 'state': 'Public Sector', 'city': 'Public Sector', 'county': 'Public Sector', 'federal': 'Public Sector',
+        'manufact': 'Manufacturing', 'industrial': 'Manufacturing',
+        'retail': 'Retail', 'commerce': 'Retail',
+        'education': 'Education', 'school': 'Education', 'university': 'Education', 'k-12': 'Education',
+        'telecom': 'Telecom', 'carrier': 'Telecom',
+    }
+    section_key = None
+    for k, v in keymap.items():
+        if k in ind_low:
+            section_key = v
+            break
+    if not section_key:
+        return []
+    for heading, terms in _VERTICAL_CUSTOMER_LANGUAGE.items():
+        if section_key.lower() in heading.lower():
+            return terms
+    return []
+
+
+def _emit_mom_test_warnings(data):
+    """v7.5 Mom Test depth-lint. Tiered enforcement:
+       HOT   → BLOCK lines (regenerate trigger)
+       WARM  → SOFT warnings
+       COOL  → INFO notes
+       COLD  → silent
+    """
+    scoring = data.get('scoring') or {}
+    tier = (scoring.get('tier') or 'WARM').upper()
+    if tier == 'COLD':
+        return
+
+    severity = {'HOT': 'BLOCK', 'WARM': 'SOFT', 'COOL': 'INFO'}.get(tier, 'INFO')
+    findings = []
+
+    d = data.get('data') or {}
+    company = data.get('company') or {}
+    industry = company.get('industry') or ''
+    signals = data.get('signals') or {}
+    demo = data.get('demo_playbook') or {}
+    recs = data.get('recommendations') or {}
+
+    # 1. opening_hook_generic — banned-phrasing scan across hooks
+    candidates = []
+    for prod in ('ad360', 'log360'):
+        p = demo.get(prod) or {}
+        oh = p.get('opening_hook') or demo.get('opening_hook') or ''
+        if oh:
+            candidates.append((f'demo_playbook.{prod}.opening_hook', oh))
+    outreach = recs.get('outreach') or {}
+    for k in ('hook', 'vision', 'framing', 'ask'):
+        v = outreach.get(k)
+        if v:
+            candidates.append((f'recommendations.outreach.{k}', v))
+    for path, text in candidates:
+        if not isinstance(text, str):
+            continue
+        bp = _mt_check_banned_phrasing(text)
+        if bp:
+            findings.append(
+                f'[depth-lint] opening_hook_generic ({severity}): {path} '
+                f'contains banned Mom-Test phrasing "{bp}". See references/mom-test-discipline.md '
+                f'§ Banned phrasings — rewrite to anchor on a dated dossier event in customer language.'
+            )
+
+    # 2. industry_language_missing — operational lens must use ≥2 vertical terms
+    lens = d.get('industry_operational_lens')
+    if isinstance(lens, str) and lens.strip():
+        terms = _vertical_terms_for(industry)
+        if terms:
+            hits = _mt_check_industry_language(lens, terms)
+            if hits < 2:
+                findings.append(
+                    f'[depth-lint] industry_language_missing ({severity}): '
+                    f'data.industry_operational_lens uses only {hits} customer-language term(s) '
+                    f'from references/vertical-playbook.md § {industry}. Required: ≥2. '
+                    f'Rewrite using the section\'s Customer Language list.'
+                )
+
+    # 3. discovery_question_unanchored — questions must reference a fact present
+    #    in the dossier (lite check: a discovery_anchors[i] entry MUST exist for
+    #    each discovery_questions[i] on HOT; on WARM at least 50%).
+    for prod in ('ad360', 'log360'):
+        p = demo.get(prod) or {}
+        qs = p.get('discovery_questions') or []
+        anchors = p.get('discovery_anchors') or []
+        if not qs:
+            continue
+        anchored = sum(
+            1 for i, _ in enumerate(qs)
+            if i < len(anchors)
+            and isinstance(anchors[i], dict)
+            and (anchors[i].get('anchor_fact') or '').strip()
+        )
+        required = len(qs) if tier == 'HOT' else (len(qs) + 1) // 2
+        if anchored < required:
+            findings.append(
+                f'[depth-lint] discovery_question_unanchored ({severity}): '
+                f'demo_playbook.{prod} — {anchored}/{len(qs)} questions have a discovery_anchors '
+                f'entry. {tier} requires ≥{required}. Each anchor must cite a dossier fact (hire, '
+                f'filing, date, stack item) via anchor_fact + source_url.'
+            )
+
+    # 4. timeline_empty_for_hot_lead — HOT/WARM expect at least one timeline event
+    timeline = signals.get('last_90_days_timeline') or []
+    if not timeline and tier in ('HOT', 'WARM'):
+        findings.append(
+            f'[depth-lint] timeline_empty_for_hot_lead ({severity}): '
+            f'signals.last_90_days_timeline is empty on a {tier} lead. Subagent C should have '
+            f'populated dated real events (hires, news, filings, M&A, RFPs). Check the harvest.'
+        )
+
+    if not findings:
+        return
+
+    header = (
+        f'[depth-lint] {tier} lead has Mom Test discipline gaps '
+        f'({"REGENERATE REQUIRED" if severity == "BLOCK" else "review"}):'
+    )
+    print(header, file=sys.stderr)
+    for f in findings:
+        print(f'  • {f}', file=sys.stderr)
+    print(
+        f'[depth-lint] (See references/mom-test-discipline.md — "Banned phrasings", '
+        f'"Customer-language rule", "Good question bank", and SKILL.md "DISCIPLINE — Mom Test Foundation".)',
+        file=sys.stderr
+    )
 
 
 if __name__ == '__main__':

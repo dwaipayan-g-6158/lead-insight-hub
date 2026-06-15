@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELISS Tab 3 — Demo Engine (v3, no-duplication mockup)</title>
+<style>
+  :root{
+    --bg:#080c14; --card:#0f172a; --border:#1e293b; --border2:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --muted2:#cbd5e1; --dim:#475569;
+    --indigo:#6366f1; --indigo-l:#818cf8; --indigo-ll:#a5b4fc;
+    --hot:#ef4444; --warm:#f59e0b; --cool:#3b82f6; --green:#22c55e; --cyan:#06b6d4; --violet:#8b5cf6;
+    --mono:'JetBrains Mono',ui-monospace,'SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:32px 16px}
+  .wrap{max-width:1080px;margin:0 auto}
+  .report-header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid rgba(99,102,241,0.2);border-radius:20px;padding:30px 34px;margin-bottom:16px;position:relative;overflow:hidden}
+  .report-header::after{content:"";position:absolute;top:-40px;right:-40px;width:220px;height:220px;background:radial-gradient(circle,rgba(99,102,241,0.18),transparent 70%)}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--indigo-l)}
+  h1{font-size:24px;margin:8px 0 4px;letter-spacing:-0.5px}
+  .idline{color:var(--muted);font-size:14px}.idline b{color:var(--muted2)}
+  .pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:6px;text-transform:uppercase}
+  .pill-hot{background:rgba(239,68,68,0.14);color:var(--hot);border:1px solid rgba(239,68,68,0.4)}
+  .pill-new{background:rgba(34,197,94,0.14);color:var(--green);border:1px solid rgba(34,197,94,0.4)}
+  .pill-rr{background:rgba(245,158,11,0.16);color:var(--warm);border:1px solid rgba(245,158,11,0.4);font-size:9px;padding:2px 6px}
+  .tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+  .tab{padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+  .tab.active{background:rgba(99,102,241,0.14);border-color:rgba(99,102,241,0.45);color:var(--indigo-ll)}
+  .legend{background:var(--card);border:1px dashed var(--border2);border-radius:12px;padding:14px 18px;margin-bottom:22px;font-size:12.5px;color:var(--muted)}
+  .legend b{color:var(--muted2)} .legend code{font-family:var(--mono);font-size:11px;color:var(--indigo-ll)}
+  .ref{display:inline-block;font-size:10px;font-family:var(--mono);color:var(--cyan);background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:5px;padding:1px 7px;text-decoration:none}
+  .section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 28px;margin-bottom:16px}
+  .sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  .sec-head h2{font-size:18px;margin:0;letter-spacing:-0.3px}
+  .sec-code{font-family:var(--mono);font-size:11px;color:var(--indigo-l);font-weight:700}
+  .sec-sub{color:var(--muted);font-size:12.5px;margin:2px 0 16px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+  .tile{background:rgba(2,6,23,0.5);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+  .tile-accent{border-left:4px solid var(--indigo)}
+  .tile h4{margin:0 0 5px;font-size:13px}.tile p{margin:0;font-size:12.5px;color:var(--muted2)}
+  .kicker{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .small{font-size:11px;color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:11px;padding:3px 9px;border-radius:6px;background:rgba(99,102,241,0.12);color:var(--indigo-ll);border:1px solid rgba(99,102,241,0.25)}
+  .chip-pain{background:rgba(239,68,68,0.12);color:#fca5a5;border-color:rgba(239,68,68,0.3)}
+  .chip-green{background:rgba(34,197,94,0.12);color:#86efac;border-color:rgba(34,197,94,0.3)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+  th{background:var(--border);color:var(--text);text-align:left;padding:9px 11px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);color:var(--muted2);vertical-align:top}
+  /* situation slide */
+  .situation{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+  @media(max-width:760px){.situation{grid-template-columns:1fr 1fr}}
+  .sit{background:rgba(2,6,23,0.5);border:1px solid var(--border);border-radius:10px;padding:10px 11px}
+  .sit .kicker{margin-bottom:4px;font-size:9px}.sit div.v{font-size:12px;color:var(--text)}
+  .core{background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(99,102,241,0.02));border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .core .rm-text{font-size:15px;font-weight:600;color:#fff}
+  .gps-rail{display:flex;margin:14px 0 6px;position:relative}
+  .gps-step{flex:1;text-align:center;position:relative;padding-top:22px}
+  .gps-step::before{content:"";position:absolute;top:6px;left:0;right:0;height:2px;background:var(--border2)}
+  .gps-step:first-child::before{left:50%}.gps-step:last-child::before{right:50%}
+  .gps-node{position:absolute;top:0;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;background:var(--indigo);border:3px solid var(--card)}
+  .chunk{background:rgba(2,6,23,0.5);border:1px solid var(--border);border-left:4px solid var(--indigo);border-radius:10px;padding:12px 14px;margin-top:10px}
+  .chunk-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700}
+  .time-badge{font-family:var(--mono);font-size:11px;color:var(--warm);background:rgba(245,158,11,0.12);padding:2px 8px;border-radius:5px}
+  .tst{font-size:11.5px;color:var(--muted);margin-top:6px;border-top:1px dashed var(--border2);padding-top:6px}.tst b{color:var(--indigo-ll)}
+  .bridges{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+  @media(max-width:760px){.bridges{grid-template-columns:1fr}}
+  .bridge{font-size:11px;border-radius:7px;padding:6px 8px;border:1px solid var(--border)}
+  .bridge .t{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted)}
+  .b-op{background:rgba(6,182,212,0.07)}.b-dept{background:rgba(245,158,11,0.07)}.b-strat{background:rgba(239,68,68,0.07)}
+  .wow{background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.28);border-radius:10px;padding:11px 14px;margin-top:12px;font-size:12.5px;color:#bbf7d0}.wow b{color:var(--green)}
+  .checkrow{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:var(--muted2);padding:5px 0}
+  .checkrow .bx{width:15px;height:15px;border:1.5px solid var(--indigo);border-radius:4px;flex-shrink:0;margin-top:2px}
+  .rm{background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(99,102,241,0.02));border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:15px 17px;margin-bottom:12px}
+  .rm-text{font-size:15px;font-weight:600;color:#fff}
+  .curve{height:50px;width:100%;margin-top:6px}
+  .foot{color:var(--dim);font-size:11px;text-align:center;margin-top:26px;padding-top:14px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="report-header">
+    <div class="eyebrow">ELISS Dossier · Tab 3 · Deal Execution Playbook (v3)</div>
+    <h1>Sarah Chen — VP, Information Security</h1>
+    <div class="idline"><b>Summit Federal Credit Union</b> · sarah.chen@summitfcu.org · Denver, CO &nbsp;<span class="pill pill-rr">RR</span></div>
+    <div style="margin-top:12px"><span class="pill pill-hot">HOT · 81 · PURSUE NOW</span></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab">Tab 1 · Intelligence</div>
+    <div class="tab">Tab 2 · Narrative</div>
+    <div class="tab active">Tab 3 · Deal Execution Playbook &nbsp;<span class="pill pill-new" style="font-size:9px;padding:2px 6px">5 CARDS</span></div>
+  </div>
+
+  <div class="legend">
+    <b>No duplication.</b> Tab 3 holds only demo-<b>delivery</b> content. Objections, competitive battlecard, stakeholder roster, discovery questions and next-steps stay in <b>Tab 1</b> (enriched in place) — the engine <b>references</b> them via <span class="ref">↳ tab1</span> chips, never reprints them. The old Tab-1 demo teaser is removed (now lives here as the full engine).
+  </div>
+
+  <!-- T-A DEMO ENGINE -->
+  <div class="section">
+    <div class="sec-head"><div><div class="sec-code">T-A · The Demo Engine</div><h2>Hyper-Customized Demo Plan</h2></div><span class="pill pill-new">NEW</span></div>
+    <div class="sec-sub">Cohan Situation Slide · Riefstahl Limbic Opening + Tell-Show-Tell + Value Pyramid · Santolalla wow moment · persuasion layer.</div>
+
+    <div class="kicker">Situation Slide</div>
+    <div class="situation">
+      <div class="sit"><div class="kicker">Persona</div><div class="v">VP InfoSec → reports to CIO</div></div>
+      <div class="sit"><div class="kicker">Critical business issue</div><div class="v">NCUA exam flagged stale privileged access</div></div>
+      <div class="sit"><div class="kicker">Problems</div><div class="v">3-wk manual reviews; no SIEM</div></div>
+      <div class="sit"><div class="kicker">Specific capabilities</div><div class="v">Access certification; UEBA</div></div>
+      <div class="sit"><div class="kicker">Delta</div><div class="v">3 weeks → 2 hours, signed</div></div>
+    </div>
+
+    <div class="core"><div class="kicker" style="color:var(--indigo-l)">Core message (the ONE thing)</div><div class="rm-text">"Turn your next NCUA exam from a 3-week fire-drill into a signed, automated artifact."</div></div>
+
+    <div class="kicker">Limbic opening · 90s &nbsp;<span class="ref">↳ tab1 signal sig-003</span></div>
+    <div class="tile tile-accent"><p>"Last quarter's exam flagged stale privileged access. I'll show how the review that takes Priya's team 3 weeks becomes a 2-hour signed report — starting at the finding itself, not a feature list."</p></div>
+
+    <div class="gps-rail">
+      <div class="gps-step"><div class="gps-node"></div><div style="font-size:12px;font-weight:700">Where we are</div><span class="small">Manual reviews</span></div>
+      <div class="gps-step"><div class="gps-node"></div><div style="font-size:12px;font-weight:700">Where we're going</div><span class="small">Continuous, audit-ready</span></div>
+      <div class="gps-step"><div class="gps-node"></div><div style="font-size:12px;font-weight:700">The route</div><span class="small">3 chunks · 22 min</span></div>
+    </div>
+
+    <div class="chunk">
+      <div class="chunk-head"><span>Chunk 1 · Access Review Automation <span class="chip" style="margin-left:6px">AD360</span></span><span class="time-badge">7 min</span></div>
+      <div class="small" style="margin-top:4px">Pain <span class="ref">↳ tab1 sig-003</span> · Tell→Show→Tell · depth: standard</div>
+      <div class="tst"><b>Tell:</b> reviews become continuous · <b>Show:</b> Access Certification dashboard · <b>Tell:</b> "the artifact you hand the examiner"</div>
+      <div class="bridges">
+        <div class="bridge b-op"><div class="t">Operational</div>Priya stops the 3-wk grind</div>
+        <div class="bridge b-dept"><div class="t">Departmental</div>SecOps clears MRA backlog</div>
+        <div class="bridge b-strat"><div class="t">Strategic</div>Clean exam → board confidence</div>
+      </div>
+    </div>
+    <div class="chunk">
+      <div class="chunk-head"><span>Chunk 2 · UEBA over AD logs <span class="chip" style="margin-left:6px">Log360</span></span><span class="time-badge">8 min</span></div>
+      <div class="small" style="margin-top:4px">Pain <span class="ref">↳ tab1 sig-007</span> · depth: technical_proof</div>
+      <div class="tst"><b>Tell→Show→Tell</b> · replay the anomalous privileged logon from their March incident.</div>
+      <div class="bridges">
+        <div class="bridge b-op"><div class="t">Operational</div>Analyst sees alert in minutes</div>
+        <div class="bridge b-dept"><div class="t">Departmental</div>GLBA logging gap closed</div>
+        <div class="bridge b-strat"><div class="t">Strategic</div>No Splunk per-GB ingest wall</div>
+      </div>
+    </div>
+
+    <div class="wow"><b>★ Wow moment / Do-It-First:</b> open by generating the signed access-certification report live in 90 seconds — the exact artifact the examiner asked for.</div>
+
+    <div class="grid2" style="margin-top:12px">
+      <div class="tile"><div class="kicker">Value close (pyramid)</div><p>Operational time saved → departmental MRA cleared → <b>strategic clean-exam outcome</b>. Proof: <span class="ref">↳ T-D Mountain West</span></p></div>
+      <div class="tile"><div class="kicker">Persuasion layer</div><div class="chips"><span class="chip">Contrast vs Splunk cost</span><span class="chip chip-pain">Loss: repeat MRA</span><span class="chip chip-green">Social proof: peer CU</span></div><p class="small" style="margin-top:6px">Why-now <span class="ref">↳ tab1 renewal_intelligence</span></p></div>
+    </div>
+  </div>
+
+  <!-- T-B LOGISTICS -->
+  <div class="section">
+    <div class="sec-head"><div><div class="sec-code">T-B · Prepare / Practice / Perform</div><h2>Demo Logistics & Dry-Run Checklist</h2></div><span class="pill pill-new">NEW</span></div>
+    <div class="sec-sub">White's Prepare+Practice habits + Santolalla remote craft. Pre-demo discipline so nothing derails the run.</div>
+    <div class="grid2">
+      <div class="tile"><div class="kicker">Prepare</div>
+        <div class="checkrow"><div class="bx"></div>Confirm attendees: Sarah (champion), Marcus (CIO/EB), Priya (IAM, runs POC)</div>
+        <div class="checkrow"><div class="bx"></div>Load sample CU directory + a stale-access dataset</div>
+        <div class="checkrow"><div class="bx"></div>Scope guard: show ONE thing well — access certification</div>
+      </div>
+      <div class="tile"><div class="kicker">Practice / Perform</div>
+        <div class="checkrow"><div class="bx"></div>Dry-run the 90s wow open until it's flawless</div>
+        <div class="checkrow"><div class="bx"></div>Remote check: screen-share, backup recording, network failover</div>
+        <div class="checkrow"><div class="bx"></div>Checkpoint-Charlie huddle 15 min before with the AE</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- T-C TARPITS -->
+  <div class="section">
+    <div class="sec-head"><div><div class="sec-code">T-C · Riefstahl "Demo Crimes"</div><h2>Demo Tarpit Watchlist</h2></div><span class="pill pill-new">NEW</span></div>
+    <div class="sec-sub">Prospect-specific "what NOT to do" — the discipline rail across the whole demo.</div>
+    <table>
+      <tr><th>Tarpit</th><th>Why risky here</th><th>Remediation</th></tr>
+      <tr><td>Harbor Tour (feature dump)</td><td>Priya is technical and will tune out a tour</td><td>Stay on the 3 chunks tied to the exam finding</td></tr>
+      <tr><td>Show &gt; 5 min</td><td>Marcus (CIO) joins for 20 min only</td><td>Cap each Show at 5 min; lead with the wow</td></tr>
+      <tr><td>Single-persona messaging</td><td>3 tiers in the room (op/dept/exec)</td><td>Hit all three "so you can" bridges per chunk</td></tr>
+      <tr><td>Teaching vs demonstrating</td><td>Reads as product-centric, not buyer-centric</td><td>Frame every screen as their outcome, not our feature</td></tr>
+    </table>
+  </div>
+
+  <!-- T-D STORY VAULT -->
+  <div class="section">
+    <div class="sec-head"><div><div class="sec-code">T-D · Matched references (DATA-DEPENDENT)</div><h2>Story Vault</h2></div><span class="pill pill-new">NEW</span></div>
+    <div class="sec-sub">Real ManageEngine references matched to this prospect's pains (Seven-Step Spine). The proof the engine & pitch cite. <b style="color:var(--warm)">Blocked until a real reference corpus is supplied.</b></div>
+    <div class="grid2">
+      <div class="tile tile-accent"><div class="chips" style="margin:0 0 8px"><span class="chip chip-green">Best match · 94%</span><span class="chip">Credit Union</span><span class="chip">NCUA</span></div><h4>Mountain West Credit Union</h4><p><b>Challenge:</b> same 3-wk reviews, post-exam MRA. <b>Resolution:</b> AD360 certification in 6 wks. <b>Result:</b> clean 2025 exam.</p></div>
+      <div class="tile tile-accent"><div class="chips" style="margin:0 0 8px"><span class="chip chip-green">Match · 81%</span><span class="chip">Regional Bank</span><span class="chip">Splunk coexist</span></div><h4>Cascade Regional Bank</h4><p><b>Challenge:</b> Splunk ingest costs. <b>Resolution:</b> Log360 alongside. <b>Result:</b> 38% SIEM spend cut.</p></div>
+    </div>
+  </div>
+
+  <!-- T-E PITCH -->
+  <div class="section">
+    <div class="sec-head"><div><div class="sec-code">T-E · Cohan/Heath RM + 3KP</div><h2>Perfect Pitch — the executive wrap</h2></div><span class="pill pill-new">NEW</span></div>
+    <div class="sec-sub">Delivery script (not the Tab 1 verdict): one residual message + 3 key points, each a business outcome with a proof.</div>
+    <div class="rm"><div class="kicker" style="color:var(--indigo-l)">Residual message (= engine core_message)</div><div class="rm-text">"Your next NCUA exam becomes a signed, automated artifact."</div></div>
+    <div class="grid3">
+      <div class="tile"><div class="kicker">Key point 1</div><h4>Audit-ready in hours</h4><p class="small">Outcome: clean exam · proof <span class="ref">↳ T-D Mountain West</span></p></div>
+      <div class="tile"><div class="kicker">Key point 2</div><h4>Close the GLBA gap</h4><p class="small">Outcome: alerting in minutes · proof <span class="ref">↳ T-D Cascade</span></p></div>
+      <div class="tile"><div class="kicker">Key point 3</div><h4>No ingest wall</h4><p class="small">Outcome: predictable cost vs Splunk</p></div>
+    </div>
+    <div class="kicker" style="margin-top:12px">Attention curve</div>
+    <svg class="curve" viewBox="0 0 600 50" preserveAspectRatio="none">
+      <path d="M0,38 C60,8 90,8 120,18 L240,30 C300,36 320,36 360,26 L480,18 C540,6 560,6 600,12" fill="none" stroke="#6366f1" stroke-width="2.5"/>
+      <text x="6" y="13" fill="#94a3b8" font-size="10" font-family="Inter">open strong</text>
+      <text x="255" y="48" fill="#94a3b8" font-size="10" font-family="Inter">proof points</text>
+      <text x="505" y="48" fill="#94a3b8" font-size="10" font-family="Inter">close strong</text>
+    </svg>
+  </div>
+
+  <div class="foot">
+    ELISS · Tab 3 v3 · 5 demo-delivery cards · no duplication of Tab 1/2 · illustrative data (Summit Federal Credit Union)<br>
+    Enriched-in-Tab-1 (not shown here): objections + L3/Boomerang · competitive "reversing the dirt" · DMU WIIFM bridges · recommendations success-criteria/POC
+  </div>
+
+</div>
+</body>
+</html>

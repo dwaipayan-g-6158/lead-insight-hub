@@ -77,7 +77,7 @@ _MEMORY_CONSTRAINTS = """
    absent. Shape (mirror for both `ad360` and `log360` keys):
      {
        "ad360":  {"opening_hook": str,
-                  "value_moments":      [ {"moment": str, "evidence": str}, ×3 ],
+                  "value_moments":      [ {"title": str, "why_it_matters": str, "tell_show_tell": str}, ×3 ],
                   "discovery_questions":[ str, ×3 ],
                   "top_objections":     [ {"objection": str, "response": str}, ×2 ],
                   "cta": str},

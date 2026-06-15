@@ -5,21 +5,35 @@ import { listLeads } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Upload, X, FileSearch, Sparkles } from "lucide-react";
+import { Search, Upload, X, FileSearch, Sparkles } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { tierClasses } from "@/lib/tier";
 import { safeDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { useDossierActivity } from "@/lib/dossier-activity";
 import type { LeadListRow } from "@/types/leads";
-import { CreateDossierModal } from "@/components/CreateDossierModal";
+import { CreateDossierModal, markDossierOrigin } from "@/components/CreateDossierModal";
+import { EngineBadge } from "@/components/EngineBadge";
 
 // Strip Catalyst's trailing midnight (" 00:00:00") so the date pill
 // reads cleanly. Shared by table + mobile-card renderers below.
 const cleanDate = (s: string | null | undefined): string | null =>
   s ? String(s).replace(/[ T]00:00:00.*$/, "") : null;
 
+// "Stale" pill: report_date older than 90 days flags intel that may need a
+// refresh. Tolerates Catalyst's "YYYY-MM-DD HH:mm:ss" by normalizing the
+// space to "T" before parsing; an unparseable date is treated as not stale.
+const STALE_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
+const staleReportDate = (s: string | null | undefined): boolean => {
+  if (!s) return false;
+  const t = Date.parse(String(s).replace(" ", "T"));
+  return Number.isFinite(t) && Date.now() - t > STALE_AFTER_MS;
+};
+
 export function LeadsListPage() {
   const { isAdmin } = useAuth();
   const fn = useServerFn(listLeads);
+  const { leadsVersion } = useDossierActivity();
   const sp = useSearch({ from: "/leads/" });
   const navigate = useNavigate({ from: "/leads/" });
   const [search, setSearch] = useState(sp.q ?? "");
@@ -28,6 +42,13 @@ export function LeadsListPage() {
   const [rows, setRows] = useState<LeadListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Mark the clicked button as the FLIP origin so the modal flies out from /
+  // minimizes back into the exact button the user pressed.
+  const openCreate = (e: React.MouseEvent<HTMLButtonElement>) => {
+    markDossierOrigin(e.currentTarget);
+    setCreateOpen(true);
+  };
 
   // keep input in sync if URL changes externally
   useEffect(() => {
@@ -67,6 +88,7 @@ export function LeadsListPage() {
     sp.confidence,
     sp.icp_min,
     mine,
+    leadsVersion,
   ]);
 
   const tiers = useMemo(() => ["", "HOT", "WARM", "COOL", "COLD"] as const, []);
@@ -137,7 +159,7 @@ export function LeadsListPage() {
         <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
           <Button
             size="sm"
-            onClick={() => setCreateOpen(true)}
+            onClick={openCreate}
             className="w-full sm:w-auto cursor-pointer"
           >
             <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
@@ -280,7 +302,7 @@ export function LeadsListPage() {
       <Card className="p-0 overflow-hidden">
         {loading ? (
           <div className="grid place-items-center py-16 min-h-[60vh] text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner className="h-5 w-5" />
           </div>
         ) : rows.length === 0 ? (
           <div className="py-16 flex flex-col items-center justify-center gap-3 text-center px-6">
@@ -304,7 +326,7 @@ export function LeadsListPage() {
                   </Button>
                 </Link>
               ) : (
-                <Button size="sm" onClick={() => setCreateOpen(true)} className="cursor-pointer">
+                <Button size="sm" onClick={openCreate} className="cursor-pointer">
                   <Sparkles className="h-4 w-4 mr-2" /> Create dossier
                 </Button>
               )}
@@ -343,14 +365,40 @@ export function LeadsListPage() {
                             {cleanDate(l.report_date)}
                           </span>
                         )}
-                        {l.demo_playbook?.has_playbook && (
+                        {l.creator_unopened && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gradient-to-r from-indigo-500/15 to-sky-500/15 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300"
-                            title="Demo Playbook authored — AD360 + Log360 demo blueprint included"
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-500/12 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                            title="Your dossier finished — you haven't opened it yet"
                           >
-                            Demo ready
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            New
                           </span>
                         )}
+                        {l.icp_stars === 5 && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300"
+                            title="Ideal-fit account — ICP ★5"
+                          >
+                            Perfect ICP
+                          </span>
+                        )}
+                        {staleReportDate(l.report_date) && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-accent/40 border border-border text-muted-foreground font-normal"
+                            title="Report is over 90 days old — may need a refresh"
+                          >
+                            Stale
+                          </span>
+                        )}
+                        {(l.confidence || "").toUpperCase() === "LOW" && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-rose-500/12 border border-rose-500/30 text-rose-700 dark:text-rose-300"
+                            title="Low confidence — score rests on limited data, verify before acting"
+                          >
+                            Low confidence
+                          </span>
+                        )}
+                        {isAdmin && <EngineBadge engine={l.generation_engine} />}
                       </div>
                       {l.lead_title && (
                         <div className="text-xs text-muted-foreground">{l.lead_title}</div>
@@ -374,7 +422,7 @@ export function LeadsListPage() {
                       {l.composite_score ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                      {l.report_date || safeDate(l.created_at)?.toLocaleDateString() || "—"}
+                      {cleanDate(l.report_date) || safeDate(l.created_at)?.toLocaleDateString() || "—"}
                     </td>
                   </tr>
                 ))}
@@ -412,14 +460,40 @@ export function LeadsListPage() {
                             {cleanDate(l.report_date)}
                           </span>
                         )}
-                        {l.demo_playbook?.has_playbook && (
+                        {l.creator_unopened && (
                           <span
-                            className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gradient-to-r from-indigo-500/15 to-sky-500/15 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 shrink-0"
-                            title="Demo Playbook authored"
+                            className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-500/12 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 shrink-0"
+                            title="Your dossier finished — you haven't opened it yet"
                           >
-                            Demo
+                            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                            New
                           </span>
                         )}
+                        {l.icp_stars === 5 && (
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 shrink-0"
+                            title="Ideal-fit account — ICP ★5"
+                          >
+                            ICP★5
+                          </span>
+                        )}
+                        {staleReportDate(l.report_date) && (
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-accent/40 border border-border text-muted-foreground font-normal shrink-0"
+                            title="Report is over 90 days old — may need a refresh"
+                          >
+                            Stale
+                          </span>
+                        )}
+                        {(l.confidence || "").toUpperCase() === "LOW" && (
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-rose-500/12 border border-rose-500/30 text-rose-700 dark:text-rose-300 shrink-0"
+                            title="Low confidence — verify before acting"
+                          >
+                            Low conf
+                          </span>
+                        )}
+                        {isAdmin && <EngineBadge engine={l.generation_engine} />}
                       </div>
                       {l.lead_title && (
                         <div className="text-xs text-muted-foreground truncate">{l.lead_title}</div>
@@ -437,7 +511,7 @@ export function LeadsListPage() {
                         </span>
                       )}
                       <span className="text-[10px] text-muted-foreground">
-                        {l.report_date || safeDate(l.created_at)?.toLocaleDateString() || "—"}
+                        {cleanDate(l.report_date) || safeDate(l.created_at)?.toLocaleDateString() || "—"}
                       </span>
                     </div>
                   </Link>

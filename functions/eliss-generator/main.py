@@ -40,10 +40,14 @@ from rocketreach_client import (  # noqa: E402
     RocketReachRateLimited,
 )
 
+from lib import checkpoint  # noqa: E402
+from lib.app_settings import get_bool, get_int, load_settings  # noqa: E402
 from lib.db import catalyst_datetime, select_one  # noqa: E402
 from lib.depth_lint import depth_lint  # noqa: E402
 from lib.store_lead import store_lead  # noqa: E402
 from lib.synth import synthesize  # noqa: E402
+
+RESUME_TARGET = "eliss-generator"
 
 
 LOG = logging.getLogger("eliss-generator")
@@ -76,9 +80,25 @@ def handler(job_request, context):
         context.close_with_failure()
         return
 
-    LOG.info("starting pipeline for request_id=%s", request_id)
+    # A resume Job re-enters this same function with resume="1" — it skips
+    # preflight/rocketreach/synthesis and re-renders from the Stratus dossier
+    # checkpoint, so the (expensive) synthesis call is never re-spent.
+    # get_job_param RAISES on an absent key (normal jobs have no `resume`
+    # param), so read it defensively — an uncaught throw here would crash the
+    # handler before _run_pipeline can patch the row.
+    def _opt_param(key):
+        try:
+            return job_request.get_job_param(key)
+        except Exception:
+            return None
+    resume = str(_opt_param("resume") or "") == "1"
+    mode = "resume" if resume else "full"
+    LOG.info("starting pipeline (%s) for request_id=%s", mode, request_id)
     try:
-        _run_pipeline(app, str(request_id))
+        if resume:
+            _run_resume(app, str(request_id))
+        else:
+            _run_pipeline(app, str(request_id))
         context.close_with_success()
     except _BlockingError as e:
         LOG.error("pipeline blocked for request_id=%s: %s", request_id, e)
@@ -211,7 +231,7 @@ def _inject_osint_banner(html, reason):
     return banner + html
 
 
-def _render(dossier_dict, request_id):
+def _render(dossier_dict, request_id, render_timeout=120):
     """Write dossier JSON to temp dir, subprocess generate_report.py.
 
     Subprocess (not in-process import) because the script's main() ends in
@@ -241,7 +261,7 @@ def _render(dossier_dict, request_id):
             "--cleanup-input-json",
         ],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=120,
+        timeout=render_timeout,
     )
     if result.returncode != 0:
         stderr_tail = (result.stderr or "")[-500:]
@@ -261,6 +281,17 @@ def _render(dossier_dict, request_id):
 # ────────────────────────────────────────────────────────────────────────────
 
 def _run_pipeline(app, request_id):
+    # Global super-admin generation settings (empty dict => hardcoded defaults
+    # stand; each lookup below falls back to the original constant).
+    settings = load_settings(app)
+    render_timeout = get_int(settings, "light_render_timeout_s", 120)
+    preflight_timeout = get_int(settings, "preflight_timeout_s", 10)
+    rr_timeout = get_int(settings, "rocketreach_timeout_s", 20)
+    rr_profiles = get_int(settings, "rr_max_bulk_profiles_light", 10)
+    lint_retry_max = get_int(settings, "light_lint_retry_max", 1)
+    if settings:
+        LOG.info("loaded global generation settings: %s keys", len(settings))
+
     # ---- preflight ----------------------------------------------------------
     _patch_request(app, request_id,
                    status="running", stage="preflight",
@@ -284,7 +315,7 @@ def _run_pipeline(app, request_id):
     LOG.info("preflight: domain=%s company=%s", domain, company_guess)
     try:
         preflight_data = preflight.run_preflight(
-            domain, company=company_guess, timeout=10, log=sys.stderr,
+            domain, company=company_guess, timeout=preflight_timeout, log=sys.stderr,
             lead_email=intake.get("email"),
         )
     except Exception as e:
@@ -310,14 +341,14 @@ def _run_pipeline(app, request_id):
     rr_degraded = False
     rr_degradation_reason = None
     try:
-        client = RocketReachClient()
+        client = RocketReachClient(timeout=rr_timeout)
         rr_baseline = client.run_baseline_enrichment(
             domain=domain,
             company_name=company_guess,
             contact_name=intake.get("name"),
             contact_linkedin=intake.get("linkedin_url"),
             contact_email=intake.get("email"),
-            max_bulk_profiles=10,
+            max_bulk_profiles=rr_profiles,
         )
         rr_call_count = client.budget_summary().get("total_calls", 0) or 0
     except RocketReachAuthError as e:
@@ -361,11 +392,20 @@ def _run_pipeline(app, request_id):
     # field populated (previously this only landed after synthesis succeeded).
     _patch_request(app, request_id, stage="synthesis", rr_calls=rr_call_count)
     LOG.info("synthesis: calling Anthropic with web_search (rr_degraded=%s)", rr_degraded)
+    # Settings-derived synthesis knobs. None => synthesize() falls back to its
+    # own constant / ANTHROPIC_MODEL env var.
+    synth_kwargs = dict(
+        rr_degraded=rr_degraded,
+        rr_degradation_reason=rr_degradation_reason,
+        model=settings.get("light_model"),
+        max_tokens=settings.get("light_max_tokens"),
+        web_search_max_uses=settings.get("light_web_search_max_uses"),
+        thinking_enabled=get_bool(settings, "light_thinking_enabled", False),
+        thinking_budget=get_int(settings, "light_thinking_budget", 0),
+    )
     try:
         dossier_dict, usage = synthesize(
-            intake, preflight_data, rr_baseline_for_synth,
-            rr_degraded=rr_degraded,
-            rr_degradation_reason=rr_degradation_reason,
+            intake, preflight_data, rr_baseline_for_synth, **synth_kwargs,
         )
     except Exception as e:
         _patch_request(app, request_id, status="failed",
@@ -375,53 +415,122 @@ def _run_pipeline(app, request_id):
     tokens_in = int(usage.get("input", 0) or 0)
     tokens_out = int(usage.get("output", 0) or 0)
 
+    # ── CHECKPOINT ───────────────────────────────────────────────────────────
+    # Light's one big token cost is this synthesis call. Persist the completed
+    # dossier to Stratus BEFORE the kill-prone render/upload tail so a failure
+    # there (or a 900s kill) is recovered by re-rendering — never a 2nd Claude
+    # call. Record spend immediately too (closes the tokens-only-at-render gap).
+    # Gated on the master toggle: when off, behavior is byte-identical to before.
+    auto_resume = get_bool(settings, "light_auto_resume_enabled", True)
+    if auto_resume:
+        checkpoint.write_dossier(app, request_id, {
+            "schema": 1,
+            "request_id": str(request_id),
+            "dossier": dossier_dict,
+            "usage": usage,
+            "intake": intake,
+            "user_id": user_id,
+            "rr_degraded": rr_degraded,
+            "rr_degradation_reason": rr_degradation_reason,
+            "rr_call_count": rr_call_count,
+        })
+        _patch_request(app, request_id,
+                       tokens_input=tokens_in, tokens_output=tokens_out,
+                       rr_calls=rr_call_count,
+                       checkpoint_ready=True, resume_target=RESUME_TARGET)
+        LOG.info("dossier checkpoint written; tokens=%s/%s", tokens_in, tokens_out)
+
+    # Lint retry re-runs the full synthesis (Light has no cheaper path); only
+    # the in-job pipeline does this — a resume never re-synthesizes.
+    def _regenerate():
+        return synthesize(intake, preflight_data, rr_baseline_for_synth, **synth_kwargs)
+
+    _finalize_light(
+        app, request_id,
+        settings=settings,
+        dossier_dict=dossier_dict,
+        intake=intake, user_id=user_id,
+        rr_degraded=rr_degraded, rr_degradation_reason=rr_degradation_reason,
+        rr_call_count=rr_call_count,
+        tokens_in=tokens_in, tokens_out=tokens_out,
+        render_timeout=render_timeout,
+        regenerate=_regenerate, lint_retry_max=lint_retry_max,
+    )
+
+
+def _soft_hits_exceed_tolerance(lint_result, settings, tier, setting_key):
+    """Tier-aware soft-hit gate for the 'partial' (saved-with-warnings) status.
+    HOT/WARM stay strict — a single empty cell on a high-value lead warrants a
+    rep review. COLD/COOL are expected to be sparse, so tolerate up to
+    ``<setting_key>`` isolated empty cells before downgrading. Hard hits + RR
+    degradation are evaluated by the caller and still flag partial at every tier.
+    """
+    t = (tier or "").upper().strip()
+    tol = 0 if t in ("HOT", "WARM") else get_int(settings, setting_key, 4)
+    return int(lint_result.get("soft_total", 0) or 0) > tol
+
+
+def _finalize_light(app, request_id, *, settings, dossier_dict, intake, user_id,
+                    rr_degraded, rr_degradation_reason, rr_call_count,
+                    tokens_in, tokens_out, render_timeout,
+                    regenerate=None, lint_retry_max=0):
+    """Shared tail: render → lint(+retry) → upload → terminal → checkpoint
+    cleanup. The in-job path passes a `regenerate` closure (full re-synthesis)
+    and lint_retry_max; the resume path passes regenerate=None so it NEVER
+    re-spends a synthesis call — it just re-renders the checkpointed dossier.
+    """
+    def _stamp_meta(d):
+        # Renderer reads meta.rr_degraded to force the illustrative scatter +
+        # footnote when an exact timeline can't be derived.
+        m = d.get("meta")
+        d["meta"] = ({**m, "rr_degraded": rr_degraded}
+                     if isinstance(m, dict) else {"rr_degraded": rr_degraded})
+
+    _stamp_meta(dossier_dict)
+
     # ---- rendering ----------------------------------------------------------
     _patch_request(app, request_id, stage="rendering",
                    tokens_input=tokens_in, tokens_output=tokens_out,
                    rr_calls=rr_call_count)
-    html_path, json_path = _render(dossier_dict, request_id)
+    html_path, _json_path = _render(dossier_dict, request_id, render_timeout)
     html = Path(html_path).read_text(encoding="utf-8")
     if rr_degraded:
         html = _inject_osint_banner(html, rr_degradation_reason)
 
-    # ---- lint gate (one retry on blocking) ----------------------------------
+    # ---- lint gate (retry on blocking, up to lint_retry_max) ----------------
     _patch_request(app, request_id, stage="lint")
-    tier = (dossier_dict.get("scoring") or {}).get("tier")
-    lint_result = depth_lint(html, tier, rr_degraded=rr_degraded)
+    lint_result = depth_lint(
+        html, (dossier_dict.get("scoring") or {}).get("tier"), rr_degraded=rr_degraded,
+    )
     LOG.info("depth_lint: %s", lint_result)
-    if lint_result["blocking"]:
-        LOG.warning("blocking lint hits — regenerating once: %s", lint_result["hits"])
-        # Use a distinct "synthesis_retry" stage so the UI can label this
-        # second pass differently ("Researching (2nd pass)") and explain
-        # the extra wait time to the user.
+    retries_done = 0
+    while regenerate and lint_result["blocking"] and retries_done < lint_retry_max:
+        retries_done += 1
+        LOG.warning("blocking lint hits — regenerating (%d/%d): %s",
+                    retries_done, lint_retry_max, lint_result["hits"])
         _patch_request(app, request_id, stage="synthesis_retry")
         try:
-            dossier_dict, usage2 = synthesize(
-                intake, preflight_data, rr_baseline_for_synth,
-                rr_degraded=rr_degraded,
-                rr_degradation_reason=rr_degradation_reason,
-            )
+            dossier_dict, usage2 = regenerate()
         except Exception as e:
             _patch_request(app, request_id, status="failed",
                            error_message=f"synthesis retry failed: {str(e)[:500]}")
             raise _BlockingError(f"synthesis retry failed: {e}")
         tokens_in += int(usage2.get("input", 0) or 0)
         tokens_out += int(usage2.get("output", 0) or 0)
+        _stamp_meta(dossier_dict)
         _patch_request(app, request_id, stage="rendering",
                        tokens_input=tokens_in, tokens_output=tokens_out)
-        # Best-effort cleanup of the first attempt's HTML.
         try:
             Path(html_path).unlink(missing_ok=True)
         except Exception:
             pass
-        html_path, json_path = _render(dossier_dict, request_id)
+        html_path, _json_path = _render(dossier_dict, request_id, render_timeout)
         html = Path(html_path).read_text(encoding="utf-8")
         if rr_degraded:
             html = _inject_osint_banner(html, rr_degradation_reason)
         _patch_request(app, request_id, stage="lint")
         lint_result = depth_lint(
-            html, (dossier_dict.get("scoring") or {}).get("tier"),
-            rr_degraded=rr_degraded,
+            html, (dossier_dict.get("scoring") or {}).get("tier"), rr_degraded=rr_degraded,
         )
 
     # ---- upload -------------------------------------------------------------
@@ -431,36 +540,82 @@ def _run_pipeline(app, request_id):
     date_str = time.strftime("%Y-%m-%d")
     filename = f"ELISS_{_slug(company_name)}_{_slug(last_name)}_{date_str}.html"
 
+    clip_overrides = {}
+    for col in ("verdict_insight", "executive_brief", "demo_playbook"):
+        v = settings.get(f"clip_{col}")
+        if v is not None:
+            clip_overrides[col] = int(v)
     try:
-        result = store_lead(app, user_id, filename, html, dossier_dict)
+        result = store_lead(app, user_id, filename, html, dossier_dict, intake,
+                            clip_overrides=clip_overrides or None)
     except Exception as e:
         _patch_request(app, request_id, status="failed",
                        error_message=f"store_lead failed: {str(e)[:500]}")
         raise _BlockingError(f"store_lead failed: {e}")
 
     # ---- terminal -----------------------------------------------------------
-    # Partial = some empty-state literals survived even after the retry,
-    # but only the non-blocking ones (otherwise we'd have raised above).
-    # rr_degraded ALSO forces partial regardless of lint outcome — an
-    # OSINT-only dossier is by definition lower confidence than RR-backed,
-    # and the UI uses the partial badge to surface that to the user.
-    terminal_status = "partial" if (lint_result["hits"] or rr_degraded) else "succeeded"
-    # lead_id is a Catalyst ROWID (17-digit bigint > 2^53). Pass as STRING
-    # so JSON-number precision loss doesn't drop the last digit on the
-    # server side. Sending int(result["id"]) silently becomes off-by-one
-    # because the platform parses bigints with JS-Number precision.
+    # Partial ("saved with warnings") on: any HARD lint hit (missing section /
+    # zero sources) at any tier, RR degradation, or SOFT cell-level hits beyond
+    # the tier-aware tolerance (HOT/WARM strict; COLD/COOL tolerate sparse data).
+    tier = (dossier_dict.get("scoring") or {}).get("tier")
+    is_partial = bool(
+        lint_result["hard_total"] > 0
+        or rr_degraded
+        or _soft_hits_exceed_tolerance(
+            lint_result, settings, tier, "light_lint_soft_tolerance")
+    )
+    terminal_status = "partial" if is_partial else "succeeded"
+    # lead_id is a Catalyst ROWID (17-digit bigint > 2^53). Pass as STRING so
+    # JSON-number precision loss doesn't drop the last digit server-side.
     _patch_request(app, request_id,
-                   status=terminal_status,
-                   stage="done",
+                   status=terminal_status, stage="done",
                    lead_id=str(result["id"]))
+    # Success → drop the checkpoint (best-effort; left on failure for resume).
+    checkpoint.cleanup(app, request_id)
 
     LOG.info("pipeline complete: request_id=%s lead_id=%s status=%s tokens=%s/%s rr_calls=%s",
              request_id, result["id"], terminal_status, tokens_in, tokens_out, rr_call_count)
 
-    # Cleanup temp files (json was --cleanup-input-json'd by the renderer, but
-    # the HTML still sits in tmp).
     for p in (html_path,):
         try:
             Path(p).unlink(missing_ok=True)
         except Exception:
             pass
+
+
+def _run_resume(app, request_id):
+    """Finish a Light request from its Stratus dossier checkpoint — re-render +
+    upload only, no synthesis call (zero re-spent tokens).
+    """
+    settings = load_settings(app)
+    render_timeout = get_int(settings, "light_render_timeout_s", 120)
+
+    _patch_request(app, request_id, status="running", stage="resuming")
+
+    cp = checkpoint.read_dossier(app, request_id)
+    if not cp or not isinstance(cp.get("dossier"), dict):
+        _patch_request(app, request_id, status="failed", stage="error",
+                       error_message="resume requested but no dossier checkpoint found")
+        raise _BlockingError("no dossier checkpoint to resume from")
+
+    user_id = cp.get("user_id")
+    if not user_id:
+        _patch_request(app, request_id, status="failed", stage="error",
+                       error_message="checkpoint missing user_id")
+        raise _BlockingError("checkpoint missing user_id")
+
+    usage = cp.get("usage") or {}
+    _finalize_light(
+        app, request_id,
+        settings=settings,
+        dossier_dict=cp["dossier"],
+        intake=cp.get("intake") or {},
+        user_id=user_id,
+        rr_degraded=bool(cp.get("rr_degraded")),
+        rr_degradation_reason=cp.get("rr_degradation_reason"),
+        rr_call_count=int(cp.get("rr_call_count") or 0),
+        tokens_in=int(usage.get("input", 0) or 0),
+        tokens_out=int(usage.get("output", 0) or 0),
+        render_timeout=render_timeout,
+        regenerate=None, lint_retry_max=0,  # never re-synthesize on resume
+    )

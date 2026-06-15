@@ -28,6 +28,7 @@ Returns:
   per_subagent_stats} for the partial-status decision in main.py.
 """
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -66,6 +67,16 @@ SUBAGENT_MAX_TOKENS = 8_000  # JSON fragments are ~3-5K typical
 # become common, tighten SUBAGENT_WEB_SEARCH_MAX_USES first, then consider
 # the 2-Job pipeline split flagged in the plan file.
 PARENT_MAX_TOKENS = 64_000
+
+
+class ParentSynthesisTimeout(Exception):
+    """Parent consolidation exceeded its wall-clock ceiling.
+
+    Raised by run_parent_only when the parent call doesn't return inside
+    parent_timeout_s. The fan-out checkpoint is already durable by the time
+    this fires, so main.py hands off to a resume Job rather than losing the
+    subagent tokens.
+    """
 
 
 def _strip_placeholder_api_key(raw: str) -> str:
@@ -141,6 +152,10 @@ async def _run_one_subagent(
     rr_degradation_reason: Optional[str],
     model: str,
     log: logging.Logger,
+    max_tokens: int = SUBAGENT_MAX_TOKENS,
+    web_search_max_uses: int = SUBAGENT_WEB_SEARCH_MAX_USES,
+    timeout_s: int = SUBAGENT_TIMEOUT_S,
+    payload_max_chars: int = 12000,
 ):
     """One layer-scoped research pass. Returns (name, fragment_dict, usage)
     or (name, None, usage) on timeout/error. Never raises — partial-tolerant.
@@ -160,25 +175,26 @@ async def _run_one_subagent(
             spec, intake, preflight_data, rr_baseline,
             rr_degraded=rr_degraded,
             rr_degradation_reason=rr_degradation_reason,
+            payload_max_chars=payload_max_chars,
         )
         tools = [
             {
                 "type": "web_search_20250305",
                 "name": "web_search",
-                "max_uses": SUBAGENT_WEB_SEARCH_MAX_USES,
+                "max_uses": web_search_max_uses,
             }
         ]
         async def _do_call():
             async with client.messages.stream(
                 model=model,
-                max_tokens=SUBAGENT_MAX_TOKENS,
+                max_tokens=max_tokens,
                 system=system_blocks,
                 tools=tools,
                 messages=messages,
             ) as stream:
                 return await stream.get_final_message()
 
-        response = await asyncio.wait_for(_do_call(), timeout=SUBAGENT_TIMEOUT_S)
+        response = await asyncio.wait_for(_do_call(), timeout=timeout_s)
         _accumulate_usage(usage, response)
 
         text = _join_text_blocks(response.content)
@@ -196,7 +212,7 @@ async def _run_one_subagent(
         return (name, fragment, usage)
 
     except asyncio.TimeoutError:
-        log.warning("subagent %s timed out after %ds", name, SUBAGENT_TIMEOUT_S)
+        log.warning("subagent %s timed out after %ds", name, timeout_s)
         return (name, None, usage)
     except Exception as e:
         log.warning("subagent %s failed: %s", name, e)
@@ -206,6 +222,10 @@ async def _run_one_subagent(
 async def _fanout_async(
     intake, preflight_data, rr_baseline, rr_degraded, rr_degradation_reason,
     subagent_model, log,
+    subagent_max_tokens=SUBAGENT_MAX_TOKENS,
+    subagent_web_search_max_uses=SUBAGENT_WEB_SEARCH_MAX_USES,
+    subagent_timeout_s=SUBAGENT_TIMEOUT_S,
+    subagent_payload_max_chars=12000,
 ):
     api_key = _strip_placeholder_api_key(os.environ.get("ANTHROPIC_API_KEY"))
     if not api_key:
@@ -216,6 +236,10 @@ async def _fanout_async(
         _run_one_subagent(
             client, name, spec, intake, preflight_data, rr_baseline,
             rr_degraded, rr_degradation_reason, subagent_model, log,
+            max_tokens=subagent_max_tokens,
+            web_search_max_uses=subagent_web_search_max_uses,
+            timeout_s=subagent_timeout_s,
+            payload_max_chars=subagent_payload_max_chars,
         )
         for name, spec in SUBAGENT_PROMPTS.items()
     ]
@@ -248,6 +272,10 @@ def _run_parent_synthesis(
     fragments, intake, preflight_data, rr_baseline,
     rr_degraded, rr_degradation_reason,
     parent_model, log,
+    max_tokens=PARENT_MAX_TOKENS,
+    thinking_enabled=False,
+    thinking_budget=0,
+    payload_max_chars=80000,
 ):
     """Sync parent call — pure text-gen, no tools, no streaming needed.
 
@@ -270,26 +298,49 @@ def _run_parent_synthesis(
         fragments, intake, preflight_data, rr_baseline,
         rr_degraded=rr_degraded,
         rr_degradation_reason=rr_degradation_reason,
+        payload_max_chars=payload_max_chars,
     )
+
+    # Extended thinking is opt-in via super-admin settings. Same API constraints
+    # as lib/synth.py: max_tokens > budget_tokens, no custom temperature (we set
+    # none), budget >= 1024.
+    stream_kwargs = {
+        "model": parent_model,
+        "max_tokens": max_tokens,
+        "system": system_blocks,
+        "messages": messages,
+    }
+    if thinking_enabled and int(thinking_budget) >= 1024 and int(thinking_budget) < max_tokens:
+        stream_kwargs["thinking"] = {
+            "type": "enabled",
+            "budget_tokens": int(thinking_budget),
+        }
 
     client = Anthropic(api_key=api_key)
     # Stream wrapper for the same > 8K max_tokens reason as in lib/synth.py.
-    with client.messages.stream(
-        model=parent_model,
-        max_tokens=PARENT_MAX_TOKENS,
-        system=system_blocks,
-        messages=messages,
-    ) as stream:
+    with client.messages.stream(**stream_kwargs) as stream:
         response = stream.get_final_message()
 
     text = _join_text_blocks(response.content)
+    stop_reason = getattr(response, "stop_reason", None)
+    # Truncation guard: if the model hit the max_tokens ceiling the dossier JSON
+    # is cut off mid-object. _extract_json_obj would then silently fall through
+    # to the first COMPLETE nested object (e.g. just the `lead` block
+    # {"name": ...}), producing a near-empty "Unknown Lead" dossier with blank
+    # sections. Fail loudly so the pipeline retries/fails instead of storing
+    # garbage. (Root cause of the 2026-06-11 "Unknown Lead" report.)
+    if stop_reason == "max_tokens":
+        raise ValueError(
+            f"parent synthesis truncated: stop_reason=max_tokens at {max_tokens} tokens — "
+            "dossier JSON incomplete; raise heavy_parent_max_tokens or lower the payload"
+        )
     dossier = _extract_json_obj(text)
     usage = {
         "input": int(getattr(response.usage, "input_tokens", 0) or 0),
         "output": int(getattr(response.usage, "output_tokens", 0) or 0),
         "cache_read": int(getattr(response.usage, "cache_read_input_tokens", 0) or 0),
         "cache_creation": int(getattr(response.usage, "cache_creation_input_tokens", 0) or 0),
-        "stop_reason": getattr(response, "stop_reason", None),
+        "stop_reason": stop_reason,
     }
     return dossier, usage
 
@@ -385,7 +436,23 @@ def _apply_rr_company_enrichment(dossier_dict, rr_baseline):
     return dossier_dict
 
 
-def run_heavy_synthesis(
+def _resolve_subagent_model(subagent_model):
+    return (
+        subagent_model
+        or os.environ.get("ANTHROPIC_SUBAGENT_MODEL")
+        or DEFAULT_SUBAGENT_MODEL
+    ).strip()
+
+
+def _resolve_parent_model(parent_model):
+    return (
+        parent_model
+        or os.environ.get("ANTHROPIC_PARENT_MODEL")
+        or DEFAULT_PARENT_MODEL
+    ).strip()
+
+
+def run_fanout_only(
     intake,
     preflight_data,
     rr_baseline,
@@ -393,43 +460,29 @@ def run_heavy_synthesis(
     rr_degraded: bool = False,
     rr_degradation_reason: Optional[str] = None,
     subagent_model: Optional[str] = None,
-    parent_model: Optional[str] = None,
+    subagent_max_tokens: Optional[int] = None,
+    subagent_web_search_max_uses: Optional[int] = None,
+    subagent_timeout_s: Optional[int] = None,
+    subagent_payload_max_chars: Optional[int] = None,
     log: Optional[logging.Logger] = None,
     on_stage=None,
 ):
-    """Public entry — same call site shape as lib/synth.synthesize().
+    """Run JUST the 4-subagent fan-out — the expensive, checkpointable asset.
 
-    Args:
-        intake, preflight_data, rr_baseline: same as light's synthesize().
-        rr_degraded, rr_degradation_reason: same OSINT-fallback contract.
-        subagent_model: override Sonnet 4.6 for the 4 research legs.
-        parent_model: override Sonnet 4.6 for the consolidation call.
-        log: logger; falls back to module logger.
-        on_stage: optional callback(stage_name) used by main.py to flip the
-            dossier_requests.stage column mid-fanout so the front-end pill
-            doesn't think we stalled during the long subagent wait.
+    Split out from run_heavy_synthesis so main.py can persist the fragments to
+    Stratus the instant the barrier completes, then decide (time-budget guard)
+    whether to run the parent in-process or hand it to a resume Job.
 
-    Returns:
-        (dossier_dict, usage_dict, fanout_meta)
-        fanout_meta = {
-            "subagents_total": 4,
-            "subagents_ok": int (0-4),
-            "per_subagent": {name: {ok, input, output}},
-        }
+    Returns (fragments, per_subagent, fanout_usage, subagents_ok).
+    Raises RuntimeError if every subagent failed (nothing to consolidate).
     """
     log = log or logging.getLogger("eliss-heavy-generator")
-    subagent_model = (
-        subagent_model
-        or os.environ.get("ANTHROPIC_SUBAGENT_MODEL")
-        or DEFAULT_SUBAGENT_MODEL
-    ).strip()
-    parent_model = (
-        parent_model
-        or os.environ.get("ANTHROPIC_PARENT_MODEL")
-        or DEFAULT_PARENT_MODEL
-    ).strip()
+    subagent_model = _resolve_subagent_model(subagent_model)
+    subagent_max_tokens = subagent_max_tokens or SUBAGENT_MAX_TOKENS
+    subagent_web_search_max_uses = subagent_web_search_max_uses or SUBAGENT_WEB_SEARCH_MAX_USES
+    subagent_timeout_s = subagent_timeout_s or SUBAGENT_TIMEOUT_S
+    subagent_payload_max_chars = subagent_payload_max_chars or 12000
 
-    # ---- fan-out ----------------------------------------------------------
     if on_stage:
         try:
             on_stage("fanout")
@@ -441,6 +494,10 @@ def run_heavy_synthesis(
             intake, preflight_data, rr_baseline,
             rr_degraded, rr_degradation_reason,
             subagent_model, log,
+            subagent_max_tokens=subagent_max_tokens,
+            subagent_web_search_max_uses=subagent_web_search_max_uses,
+            subagent_timeout_s=subagent_timeout_s,
+            subagent_payload_max_chars=subagent_payload_max_chars,
         )
     )
     subagents_ok = sum(1 for v in per_subagent.values() if v.get("ok"))
@@ -451,22 +508,97 @@ def run_heavy_synthesis(
         # consolidate. Bubble up rather than producing a meaningless dossier.
         raise RuntimeError("all 4 subagents failed or timed out — no research fragments")
 
-    # ---- parent synthesis -------------------------------------------------
+    return fragments, per_subagent, fanout_usage, subagents_ok
+
+
+def run_parent_only(
+    fragments,
+    intake,
+    preflight_data,
+    rr_baseline,
+    *,
+    rr_degraded: bool = False,
+    rr_degradation_reason: Optional[str] = None,
+    parent_model: Optional[str] = None,
+    parent_max_tokens: Optional[int] = None,
+    parent_thinking_enabled: bool = False,
+    parent_thinking_budget: int = 0,
+    parent_payload_max_chars: Optional[int] = None,
+    parent_timeout_s: Optional[int] = None,
+    degraded: bool = False,
+    log: Optional[logging.Logger] = None,
+    on_stage=None,
+):
+    """Run JUST the parent consolidation over already-computed fragments.
+
+    Wraps the (sync) parent call in a wall-clock timeout so a slow stream can't
+    silently eat the whole Job budget. On timeout raises ParentSynthesisTimeout
+    — by then the fan-out checkpoint exists, so the caller can resume cheaply.
+
+    `degraded=True` (a timeout-triggered resume) disables thinking and tightens
+    the output ceiling so the retry is likelier to finish.
+
+    Returns (dossier_dict, parent_usage).
+    """
+    log = log or logging.getLogger("eliss-heavy-generator")
+    parent_model = _resolve_parent_model(parent_model)
+    parent_max_tokens = parent_max_tokens or PARENT_MAX_TOKENS
+    parent_payload_max_chars = parent_payload_max_chars or 80000
+
+    if degraded:
+        # "Degraded" disables extended thinking ONLY. Do NOT reduce max_tokens:
+        # generation time scales with the tokens the model actually emits, not
+        # the ceiling, so a lower cap doesn't make it finish sooner — it just
+        # TRUNCATES the dossier JSON (→ unparseable → near-empty "Unknown Lead").
+        # The real lever for a slow parent is more wall-clock, which the resume
+        # job already provides (see _run_resume's generous parent timeout).
+        parent_thinking_enabled = False
+        log.info("parent running DEGRADED (extended thinking disabled)")
+
     if on_stage:
         try:
             on_stage("synthesis")
         except Exception:
             pass
 
-    dossier, parent_usage = _run_parent_synthesis(
-        fragments, intake, preflight_data, rr_baseline,
-        rr_degraded, rr_degradation_reason,
-        parent_model, log,
-    )
+    def _call():
+        return _run_parent_synthesis(
+            fragments, intake, preflight_data, rr_baseline,
+            rr_degraded, rr_degradation_reason,
+            parent_model, log,
+            max_tokens=parent_max_tokens,
+            thinking_enabled=parent_thinking_enabled,
+            thinking_budget=parent_thinking_budget,
+            payload_max_chars=parent_payload_max_chars,
+        )
+
+    if parent_timeout_s and int(parent_timeout_s) > 0:
+        # ThreadPoolExecutor + result(timeout=...) stops us WAITING on a runaway
+        # parent stream; it can't kill the underlying HTTP call (the sync
+        # Anthropic client owns it). That's fine — the checkpoint is durable and
+        # the Job is about to defer/exit, so the abandoned thread dies with the
+        # process. shutdown(wait=False) so we never block on that thread.
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        fut = ex.submit(_call)
+        try:
+            dossier, parent_usage = fut.result(timeout=int(parent_timeout_s))
+            ex.shutdown(wait=False)
+        except concurrent.futures.TimeoutError:
+            ex.shutdown(wait=False)
+            log.warning("parent synthesis exceeded %ss — ParentSynthesisTimeout", parent_timeout_s)
+            raise ParentSynthesisTimeout(f"parent synthesis exceeded {parent_timeout_s}s")
+    else:
+        dossier, parent_usage = _call()
 
     dossier = _apply_rr_company_enrichment(dossier, rr_baseline)
+    return dossier, parent_usage
 
-    total_usage = {
+
+def merge_usage(fanout_usage, parent_usage):
+    """Sum two usage dicts into the total_usage shape main.py records."""
+    fanout_usage = fanout_usage or {}
+    parent_usage = parent_usage or {}
+    return {
         "input": fanout_usage.get("input", 0) + parent_usage.get("input", 0),
         "output": fanout_usage.get("output", 0) + parent_usage.get("output", 0),
         "cache_read": fanout_usage.get("cache_read", 0) + parent_usage.get("cache_read", 0),
@@ -475,9 +607,61 @@ def run_heavy_synthesis(
         ),
         "stop_reason": parent_usage.get("stop_reason"),
     }
+
+
+def run_heavy_synthesis(
+    intake,
+    preflight_data,
+    rr_baseline,
+    *,
+    rr_degraded: bool = False,
+    rr_degradation_reason: Optional[str] = None,
+    subagent_model: Optional[str] = None,
+    parent_model: Optional[str] = None,
+    subagent_max_tokens: Optional[int] = None,
+    parent_max_tokens: Optional[int] = None,
+    subagent_web_search_max_uses: Optional[int] = None,
+    subagent_timeout_s: Optional[int] = None,
+    subagent_payload_max_chars: Optional[int] = None,
+    parent_payload_max_chars: Optional[int] = None,
+    parent_thinking_enabled: bool = False,
+    parent_thinking_budget: int = 0,
+    parent_timeout_s: Optional[int] = None,
+    log: Optional[logging.Logger] = None,
+    on_stage=None,
+):
+    """Thin wrapper: fan-out then parent, in one call. Same return shape as
+    before — kept for the lint-retry path in main.py and any other caller. The
+    main pipeline now calls run_fanout_only / run_parent_only directly so it can
+    checkpoint between them.
+
+    Returns (dossier_dict, total_usage, fanout_meta).
+    """
+    log = log or logging.getLogger("eliss-heavy-generator")
+    fragments, per_subagent, fanout_usage, subagents_ok = run_fanout_only(
+        intake, preflight_data, rr_baseline,
+        rr_degraded=rr_degraded, rr_degradation_reason=rr_degradation_reason,
+        subagent_model=subagent_model,
+        subagent_max_tokens=subagent_max_tokens,
+        subagent_web_search_max_uses=subagent_web_search_max_uses,
+        subagent_timeout_s=subagent_timeout_s,
+        subagent_payload_max_chars=subagent_payload_max_chars,
+        log=log, on_stage=on_stage,
+    )
+    dossier, parent_usage = run_parent_only(
+        fragments, intake, preflight_data, rr_baseline,
+        rr_degraded=rr_degraded, rr_degradation_reason=rr_degradation_reason,
+        parent_model=parent_model,
+        parent_max_tokens=parent_max_tokens,
+        parent_thinking_enabled=parent_thinking_enabled,
+        parent_thinking_budget=parent_thinking_budget,
+        parent_payload_max_chars=parent_payload_max_chars,
+        parent_timeout_s=parent_timeout_s,
+        log=log, on_stage=on_stage,
+    )
     fanout_meta = {
         "subagents_total": len(SUBAGENT_PROMPTS),
         "subagents_ok": subagents_ok,
         "per_subagent": per_subagent,
     }
-    return dossier, total_usage, fanout_meta
+    return dossier, merge_usage(fanout_usage, parent_usage), fanout_meta

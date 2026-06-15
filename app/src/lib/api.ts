@@ -181,6 +181,16 @@ export async function getMyRole() {
   return call<{ userId: string; roles: string[]; isAdmin: boolean; role: string }>(`/me/role`);
 }
 
+// Triggers Catalyst's email-based password reset for the logged-in user.
+// The server resolves the email from the session — nothing is sent in the
+// body. Returns the email the reset link was sent to (for the success toast).
+export async function resetMyPassword() {
+  return call<{ ok: boolean; email: string }>(`/me/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export async function getMyProfile() {
   return call<{
     userId: string;
@@ -189,7 +199,9 @@ export async function getMyProfile() {
     lastName: string | null;
     role: string;
     isAdmin: boolean;
+    isSuperAdmin?: boolean;
     roles: string[];
+    heavyAllowed?: boolean;
   }>(`/me`);
 }
 
@@ -273,6 +285,66 @@ export async function adminCreateUser({
 }) {
   return call<AdminUser>(`/admin/users`, {
     method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// ---------- super-admin generation settings ----------
+
+// One field's contract — mirrors functions/api/lib/generation-settings.schema.json.
+export type SettingSpec = {
+  type: "int" | "bool" | "enum";
+  default: number | boolean | string;
+  min?: number;
+  max?: number;
+  enum?: string[];
+  recommended: number | boolean | string;
+  unit?: string;
+  engine: "light" | "heavy" | "shared";
+  group: "richness" | "operational";
+  label: string;
+  help: string;
+  tradeoff: string;
+  recommendedNote?: string;
+  dependsOn?: string;
+};
+
+export type SettingsSchema = {
+  version: number;
+  models: { id: string; label: string }[];
+  settings: Record<string, SettingSpec>;
+};
+
+export type SettingsWarning = { field: string; level: "info" | "warn"; msg: string };
+
+export type SettingsValue = number | boolean | string;
+
+export type GetSettingsResponse = {
+  schema: SettingsSchema;
+  defaults: Record<string, SettingsValue>;
+  settings: Record<string, SettingsValue>;
+  warnings: SettingsWarning[];
+  meta: { updatedBy: string | null; updatedAt: string | null; hasRow: boolean };
+};
+
+export async function getSettings() {
+  return call<GetSettingsResponse>(`/admin/settings`);
+}
+
+export type UpdateSettingsResponse = {
+  ok: boolean;
+  settings: Record<string, SettingsValue>;
+  warnings: SettingsWarning[];
+  meta: { updatedBy: string; updatedAt: string };
+};
+
+export async function updateSettings({
+  data,
+}: {
+  data: Record<string, SettingsValue>;
+}) {
+  return call<UpdateSettingsResponse>(`/admin/settings`, {
+    method: "PUT",
     body: JSON.stringify(data),
   });
 }

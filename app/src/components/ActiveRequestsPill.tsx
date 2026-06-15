@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Activity, ChevronDown, Loader2, RefreshCw, X } from "lucide-react";
+import { Activity, ChevronDown, RefreshCw, X } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 import {
   Popover,
@@ -51,7 +52,7 @@ function friendlyErrorLabel(raw: string | null | undefined): string {
 }
 
 export function ActiveRequestsPill() {
-  const { openActivity } = useDossierActivity();
+  const { openActivity, activeRequestId, bumpLeadsVersion } = useDossierActivity();
   const [requests, setRequests] = useState<DossierRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -60,6 +61,12 @@ export function ActiveRequestsPill() {
   const [clearingId, setClearingId] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  // Track which requests we've already counted as "produced a lead" so each
+  // completion fires the global refresh signal exactly once. seededRef skips
+  // the first tick so pre-existing completed requests don't trigger a spurious
+  // refresh on page load.
+  const completedRef = useRef<Set<string>>(new Set());
+  const seededRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,10 +77,23 @@ export function ActiveRequestsPill() {
         const res = await listDossierRequests({});
         if (cancelled) return;
         const recent = res.requests.slice(0, 20);
+        // Detect dossiers that just reached a lead-producing terminal state so
+        // stale list views (dashboard, leads table, recent leads) can refetch.
+        let sawNewLead = false;
+        for (const r of recent) {
+          const producedLead =
+            (r.status === "succeeded" || r.status === "partial") && r.lead_id;
+          if (producedLead && !completedRef.current.has(r.id)) {
+            completedRef.current.add(r.id);
+            if (seededRef.current) sawNewLead = true;
+          }
+        }
+        seededRef.current = true;
         setRequests(recent);
         const anyLive = recent.some((r) => !isTerminal(r.status));
         if (!anyLive) setPaused(true);
         else setPaused(false);
+        if (sawNewLead) bumpLeadsVersion();
       } catch (e) {
         // Auth errors are noisy here — swallow.
       } finally {
@@ -96,6 +116,16 @@ export function ActiveRequestsPill() {
   useEffect(() => {
     if (open) setPaused(false);
   }, [open]);
+
+  // A dossier was just started (or re-opened) — re-arm polling and refetch
+  // immediately so the pill flips to the live stage without waiting for the
+  // next 10s tick (and even if polling had paused while idle).
+  useEffect(() => {
+    if (activeRequestId) {
+      setPaused(false);
+      setRefreshNonce((n) => n + 1);
+    }
+  }, [activeRequestId]);
 
   const handleRetry = async (request: DossierRequest) => {
     setRetryingId(request.id);
@@ -178,6 +208,7 @@ export function ActiveRequestsPill() {
       <PopoverTrigger asChild>
         <button
           type="button"
+          id="dossier-activity-pill"
           aria-label={
             liveCount > 0
               ? `${liveCount} dossier${liveCount === 1 ? "" : "s"} in progress`
@@ -190,14 +221,19 @@ export function ActiveRequestsPill() {
           }`}
         >
           {liveCount > 0 ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            // Crisp symmetric ring spinner (see .spinner-ring in styles.css) —
+            // replaces the small lucide arc that shimmered/"shook" at fractional
+            // display scaling.
+            <span className="spinner-ring h-4 w-4" aria-hidden />
           ) : (
-            <Activity className="h-3.5 w-3.5" />
+            <Activity className="h-4 w-4" />
           )}
           {liveCount > 0 && liveCellInfo ? (
             <span className="inline-flex items-center gap-1 font-medium">
-              <span className="text-muted-foreground/80">Dossier Requests:</span>
-              <span className="max-w-[8rem] truncate uppercase tracking-wide">
+              {/* Verbose prefix + stage label: desktop/tablet only. On mobile
+                 the cramped header keeps just the icon + index/total count. */}
+              <span className="hidden sm:inline text-muted-foreground/80">Dossier Requests:</span>
+              <span className="hidden sm:inline max-w-[8rem] truncate uppercase tracking-wide">
                 {liveCellInfo.label}
               </span>
               <span className="text-muted-foreground/80">
@@ -205,9 +241,11 @@ export function ActiveRequestsPill() {
               </span>
             </span>
           ) : (
-            <span className="font-medium">Dossier Requests</span>
+            // Idle label: hidden on mobile (icon alone conveys "no activity");
+            // shown sm+ so the desktop header keeps a tappable text affordance.
+            <span className="hidden sm:inline font-medium">Dossier Requests</span>
           )}
-          <ChevronDown className="h-3 w-3 opacity-70" />
+          <ChevronDown className="hidden sm:block h-3 w-3 opacity-70" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
@@ -349,7 +387,7 @@ function RequestRow({
           title="Re-submit this request"
         >
           {retrying ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Spinner className="h-3 w-3" />
           ) : (
             <RefreshCw className="h-3 w-3" />
           )}
@@ -372,7 +410,7 @@ function RequestRow({
           className="shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-0.5 text-muted-foreground hover:text-foreground hover:border-border/60 disabled:opacity-50 cursor-pointer"
         >
           {clearing ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Spinner className="h-3 w-3" />
           ) : (
             <X className="h-3.5 w-3.5" />
           )}

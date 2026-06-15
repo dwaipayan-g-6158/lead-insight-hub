@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "@tanstack/react-router";
-import { CheckCircle2, Heart, Loader2, Lock, Network, Radar, Sparkles, UserPlus, Zap } from "lucide-react";
+import { CheckCircle2, Heart, Lock, Network, Radar, Sparkles, UserPlus, Zap } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { selfSignup, getSignupConfig, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -352,7 +353,7 @@ export function SignUpPage() {
                       )}
 
                       <Button type="submit" className="w-full" disabled={busy}>
-                        {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        {busy && <Spinner className="h-4 w-4 mr-2" />}
                         Create account
                       </Button>
 

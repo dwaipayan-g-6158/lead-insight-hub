@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, Sparkles } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 // Lazy chunk — only fetched when the localStorage gate flag is present.
 // Bundled into its own JS file by Vite's code splitter, so the main bundle
@@ -21,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { ApiError, createDossierRequest } from "@/lib/api";
 import { useDossierActivity } from "@/lib/dossier-activity";
+import { useAuth } from "@/lib/auth";
 
 type Props = {
   open: boolean;
@@ -43,6 +45,24 @@ const EMPTY_FORM: IntakeForm = {
   notes: "",
 };
 
+// The Create-Dossier modal can be opened from several "Create dossier" buttons
+// (LeadsListPage header + empty state, UploadPage header + cards). The FLIP
+// "fly to corner" animation in ui/dialog.tsx targets a CSS selector, so to make
+// the modal emerge from — and minimize back into — the EXACT button the user
+// clicked (e.g. Cancel reads as "put it back where I got it"), each trigger
+// stamps itself with this data-attribute on click. Only one element carries the
+// marker at a time; the dialog's selector resolves to it. If the marker is
+// missing/hidden the dialog falls back to the top-right viewport corner.
+const ORIGIN_SELECTOR = "[data-cd-origin]";
+
+export function markDossierOrigin(el: HTMLElement | null): void {
+  if (typeof document === "undefined") return;
+  document
+    .querySelectorAll(ORIGIN_SELECTOR)
+    .forEach((n) => n.removeAttribute("data-cd-origin"));
+  if (el) el.setAttribute("data-cd-origin", "");
+}
+
 // Mirrors the server-side intake invariant in routes/dossiers.js — at least
 // one of (name AND email), linkedin_url, or company_url must be present.
 function validateIntake(form: IntakeForm): string | null {
@@ -56,6 +76,7 @@ function validateIntake(form: IntakeForm): string | null {
 
 export function CreateDossierModal({ open, onOpenChange }: Props) {
   const { openActivity } = useDossierActivity();
+  const { heavyAllowed } = useAuth();
   const [form, setForm] = useState<IntakeForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -65,6 +86,10 @@ export function CreateDossierModal({ open, onOpenChange }: Props) {
   // branch), so each heavy run needs its own logo-tap re-arming.
   const isArmed = (): boolean => {
     if (typeof window === "undefined") return false;
+    // Entitlement gate first: a non-allowlisted user can never arm the toggle,
+    // even with a stale/forged _lih_x flag. The server still re-checks, so this
+    // is purely to keep the UI honest (no toggle, no `_x` sent).
+    if (!heavyAllowed) return false;
     try {
       const raw = window.localStorage.getItem("_lih_x");
       const ts = raw ? parseInt(raw, 10) : 0;
@@ -157,7 +182,7 @@ export function CreateDossierModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl" flyTarget={ORIGIN_SELECTOR}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -251,7 +276,7 @@ export function CreateDossierModal({ open, onOpenChange }: Props) {
             <Button type="submit" disabled={submitting} className="cursor-pointer">
               {submitting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner className="h-4 w-4 mr-2" />
                   Submitting…
                 </>
               ) : (

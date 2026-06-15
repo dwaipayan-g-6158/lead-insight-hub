@@ -31,7 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 const schema = z
   .object({
@@ -198,7 +199,7 @@ export function CreateUserDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={busy}>
-                {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {busy && <Spinner className="h-4 w-4 mr-2" />}
                 Create user
               </Button>
             </DialogFooter>

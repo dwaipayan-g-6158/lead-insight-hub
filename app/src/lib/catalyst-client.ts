@@ -13,10 +13,20 @@ declare global {
   }
 }
 
+// Environment-aware config. The same build is deployed to both the Development
+// and Production Web Client Hosting; the dev URL carries a ".development."
+// segment while production does not. Detecting the environment at runtime lets
+// one build initialize the Catalyst SDK with the correct per-environment ZAID,
+// org id and storage domains (a hardcoded dev ZAID breaks prod login with an
+// "Untrusted Domain" error).
+const IS_DEV =
+  typeof window !== "undefined" &&
+  window.location.hostname.includes(".development.");
+
 const PROJECT_ID = "31210000000133001";
-const ZAID = "50042133518";
-const ORG_ID = "60066539659";
-const ENV = "Development";
+const ZAID = IS_DEV ? "50042133518" : "50042142947";
+const ORG_ID = IS_DEV ? "60066539659" : "50042142947";
+const ENV = IS_DEV ? "Development" : "Production";
 
 // IN data center.  api_domain is left empty so the SDK uses the page origin
 // (Catalyst Web Client Hosting proxies /baas/* on the same domain).
@@ -62,8 +72,8 @@ function initOnce(): void {
         zaid: ZAID,
         auth_domain: AUTH_DOMAIN,
         is_appsail: false,
-        stratus_domain: "-development.zohostratus.in",
-        nimbus_domain: "-development.nimbuspop.com",
+        stratus_domain: IS_DEV ? "-development.zohostratus.in" : ".zohostratus.in",
+        nimbus_domain: IS_DEV ? "-development.nimbuspop.com" : ".nimbuspop.com",
         api_domain: API_DOMAIN,
       },
       { org_id: ORG_ID, environment: ENV },
@@ -94,7 +104,7 @@ export async function renderSignInForm(elementId: string) {
   const sdk = await loadCatalystSDK();
   const service_url = `${window.location.origin}/app/index.html`;
   // Cache-bust the iframe CSS so theme changes ship without a hard refresh.
-  const css_url = `${window.location.origin}/app/login-iframe.css?v=33`;
+  const css_url = `${window.location.origin}/app/login-iframe.css?v=35`;
   const params = {
     service_url,
     css_url,

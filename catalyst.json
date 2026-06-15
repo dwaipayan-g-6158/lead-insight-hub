@@ -3,7 +3,7 @@
   "projectId": "31210000000133001",
   "envId": "60066539659",
   "functions": {
-    "targets": ["api", "eliss-generator", "eliss-heavy-generator"],
+    "targets": ["api", "eliss-generator", "eliss-heavy-generator", "dossier-sweeper"],
     "source": "functions"
   },
   "client": {

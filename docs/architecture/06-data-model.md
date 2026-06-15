@@ -10,6 +10,11 @@ Four Catalyst Data Store tables drive the entire application. All four live in t
 | `lead_signals` | `31210000000145001` | Buying signals attached to a lead (positive + negative). | `store_lead.py` at the same time it inserts the parent leads row. |
 | `user_roles` | `31210000000143001` | App-level role per Catalyst user. | `loadRole` middleware (auto-creates a row on first authenticated request). |
 | `dossier_requests` | `31210000000151002` | Job-status state machine for in-flight dossier generation. | `routes/dossiers.js` on POST `/dossiers/generate`. |
+| `app_settings` | `31210000000227021` | Single GLOBAL-scope row holding the super-admin generation settings as JSON. | `routes/settings.js` on PUT `/admin/settings` (super-admin only). |
+
+## `app_settings` (singleton)
+
+GLOBAL-scope, **one row** (the lowest-ROWID row is the singleton; `routes/settings.js` upserts it). Columns: `settings_json` (text, ≤10000) — the full settings object validated against `functions/api/lib/generation-settings.schema.json`; `updated_by` (varchar 255) — super-admin email for audit; `updated_at` (datetime). Both Python generators read this row at job start via `lib/app_settings.load_settings(app)` and apply `settings.get(key, <existing constant>)`, so an empty/missing row is a no-op (today's hardcoded defaults stand). The schema JSON's `default` values equal those constants; never let them drift.
 
 ## Entity-relationship diagram
 
@@ -97,6 +102,9 @@ erDiagram
         int rr_calls
         boolean rr_degraded
         string rr_degradation_reason "rr_full_miss|rr_company_miss"
+        int resume_attempts "checkpoint-resume retry count"
+        boolean checkpoint_ready "synthesis output persisted to Stratus"
+        string resume_target "Stratus key of the saved checkpoint"
         text error_message
         datetime CREATEDTIME
         datetime MODIFIEDTIME
@@ -163,7 +171,7 @@ Application-level role layered on top of Catalyst's project-user roles (which Ca
 
 **Self-heal rule:** if a Catalyst-authenticated request arrives with no matching `user_roles` row, the middleware inserts one with `role='user'`. App Administrators (per Catalyst's own console role) bypass this and get `role='admin'` only when explicitly set by another admin via `/admin/users`. See [10-security-and-rbac.md](./10-security-and-rbac.md) for the rationale.
 
-## `dossier_requests` (22 columns)
+## `dossier_requests` (25 columns)
 
 The state machine for the async dossier-generation job. Updated by both the API function (on POST) and the Job Function (every stage boundary, as a heartbeat).
 
@@ -181,6 +189,11 @@ The state machine for the async dossier-generation job. Updated by both the API 
 - `tokens_input`, `tokens_output` — Anthropic usage from `synthesize()` (light) or the parent + fan-out (heavy).
 - `rr_calls` — Total RocketReach endpoint hits.
 - `rr_degraded` (bool) + `rr_degradation_reason` — Set to `true` when RocketReach has no firmographics for the org (`rr_full_miss`) or only partial data (`rr_company_miss`). Job continues — it's a coverage gap, not a failure. UI surfaces this as the "OSINT-only" banner.
+
+**Checkpoint & resume** (added v1.1.0):
+- `checkpoint_ready` (bool) — Set `true` once the expensive synthesis output has been persisted to Stratus, before the kill-prone render/upload tail.
+- `resume_target` (varchar) — Stratus key of the saved checkpoint.
+- `resume_attempts` (int) — How many times a stale-sweep has auto-dispatched a resume job for this request. Lets the resume path finish from the checkpoint instead of re-running synthesis (zero wasted tokens). See the memory rule `project_lead_insight_hub_checkpoint_resume`.
 
 **Failure:**
 - `error_message` (text) — Up to 9999 chars, truncated. Surface verbatim in the UI's failed-job tooltip.

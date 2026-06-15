@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { requireAdmin } = require("../lib/auth");
-const { esc, selectAll, selectOne } = require("../lib/db");
+const { esc, selectAll, selectOne, catalystDateTime } = require("../lib/db");
 const { getSignedUrl, deleteObject } = require("../lib/stratus");
 const { parseAndStoreDossier } = require("../lib/storeDossier");
 
@@ -11,6 +11,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const LEAD_COLS_FULL = [
   "ROWID", "user_id", "storage_path", "filename",
   "lead_name", "lead_title", "company", "email", "report_date", "eliss_version",
+  "generation_engine",
   "composite_score", "tier", "confidence", "icp_rating", "icp_reason",
   "fit_score", "fit_max", "fit_conf",
   "intent_score", "intent_max", "intent_conf",
@@ -18,7 +19,7 @@ const LEAD_COLS_FULL = [
   "budget_score", "budget_max", "budget_conf",
   "verdict_headline", "verdict_insight", "verdict_next", "executive_brief",
   "demo_playbook",
-  "CREATEDTIME", "updated_at",
+  "CREATEDTIME", "updated_at", "opened_by_creator_at",
 ];
 
 const LEAD_COLS_LIST = [
@@ -29,9 +30,20 @@ const LEAD_COLS_LIST = [
   // /leads page UI badge) both rely on. Adding this column keeps us
   // at 10 selected columns — well under the ZCQL 20-col SELECT cap.
   "icp_rating",
-  // demo_playbook (v7.6.0) carries the JSON-stringified teaser so the
-  // list page can show a "Demo ready" badge without a second round-trip.
+  // demo_playbook (v7.6.0) carries the JSON-stringified teaser. The list
+  // page no longer renders a "Demo ready" badge, but the column is cheap
+  // to keep selected and the detail-page preview still reads it.
   "demo_playbook",
+  // user_id + opened_by_creator_at drive the creator-scoped "New" pill:
+  // a dossier you created that you haven't opened yet. user_id is stripped
+  // from the response after the flag is computed (see the list loop). Still
+  // 12 cols — under the ZCQL 20-col SELECT cap.
+  "user_id", "opened_by_creator_at",
+  // confidence drives the "Low confidence" caution pill on the list page.
+  "confidence",
+  // generation_engine ("light"|"heavy"|"import") drives the admin-only
+  // Heavy/Light engine pill. 13 cols total — still under the ZCQL 20-col cap.
+  "generation_engine",
 ];
 
 // ZCQL returns int/decimal columns as JSON strings — coerce here so the
@@ -310,7 +322,16 @@ router.get("/", async (req, res) => {
       const id = String(row.ROWID);
       if (seen.has(id)) continue;
       seen.add(id);
-      leads.push(reshapeLead(row));
+      const reshaped = reshapeLead(row);
+      // Creator-scoped "New" pill: true only on dossiers the caller created
+      // and has never opened. Cleared when the creator opens the dossier
+      // (see GET /:id below). Strip the raw ownership fields afterwards so
+      // we don't leak user_id / the timestamp to the client.
+      reshaped.creator_unopened =
+        String(row.user_id) === String(req.userId) && !row.opened_by_creator_at;
+      delete reshaped.user_id;
+      delete reshaped.opened_by_creator_at;
+      leads.push(reshaped);
       if (leads.length >= 500) break;
     }
 
@@ -374,6 +395,21 @@ router.get("/:id", async (req, res) => {
     );
 
     const lead = reshapeLead({ ...partA, ...(partB || {}) });
+
+    // Clear the creator-scoped "New" pill: the first time the dossier's
+    // creator opens it, stamp opened_by_creator_at. Fire-and-forget so we
+    // don't block the response on a Data Store roundtrip — the detail page
+    // doesn't read this flag, and the next /leads fetch reflects the
+    // cleared pill. Only the creator triggers it (a different viewer, even
+    // an admin, never stamps it), and only once (guarded on null). Same
+    // datetime + admin-datastore + .catch() pattern as auth.js:67-95.
+    if (String(lead.user_id) === String(req.userId) && !lead.opened_by_creator_at) {
+      (req.catalystAdminApp || req.catalystApp)
+        .datastore()
+        .table("leads")
+        .updateRow({ ROWID: id, opened_by_creator_at: catalystDateTime(new Date()) })
+        .catch((e) => console.warn("opened_by_creator_at stamp failed:", e?.message));
+    }
 
     const signalRows = await selectAll(
       zcql,

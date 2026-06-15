@@ -20,6 +20,9 @@ export type LeadRow = {
   email: string | null;
   report_date: string | null;
   eliss_version: string | null;
+  // "light" | "heavy" | "import" — which pipeline produced this dossier.
+  // Surfaced as an admin-only Heavy/Light pill. null on legacy rows.
+  generation_engine: string | null;
   composite_score: number | null;
   tier: string | null;
   confidence: string | null;
@@ -55,6 +58,16 @@ export type LeadListRow = {
   report_date: string | null;
   created_at: string;
   demo_playbook: DemoPlaybookTeaser | null;
+  // creator_unopened: true only on dossiers the current viewer created and
+  // has not opened yet — drives the "New" pill (cleared server-side on first
+  // open). icp_stars (1..5) is derived from icp_rating by reshapeLead() and
+  // drives the "Perfect ICP" (★5) pill.
+  creator_unopened?: boolean;
+  icp_stars?: number | null;
+  // "HIGH" | "MEDIUM" | "LOW" — drives the "Low confidence" caution pill.
+  confidence?: string | null;
+  // "light" | "heavy" | "import" — drives the admin-only engine pill.
+  generation_engine?: string | null;
 };
 
 export type Signal = {

@@ -17,12 +17,19 @@ type Ctx = {
   activeRequestId: string | null;
   openActivity: (id: string) => void;
   closeActivity: () => void;
+  // App-wide "a dossier just produced/updated a lead" signal. The header pill
+  // (the always-mounted global request poller) bumps this when it sees a
+  // request reach a lead-producing terminal state; stale list views subscribe
+  // to it to refetch without a manual browser reload.
+  leadsVersion: number;
+  bumpLeadsVersion: () => void;
 };
 
 const DossierActivityContext = createContext<Ctx | null>(null);
 
 export function DossierActivityProvider({ children }: { children: ReactNode }) {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [leadsVersion, setLeadsVersion] = useState(0);
 
   const openActivity = useCallback((id: string) => {
     setActiveRequestId(id);
@@ -32,9 +39,19 @@ export function DossierActivityProvider({ children }: { children: ReactNode }) {
     setActiveRequestId(null);
   }, []);
 
+  const bumpLeadsVersion = useCallback(() => {
+    setLeadsVersion((v) => v + 1);
+  }, []);
+
   const value = useMemo<Ctx>(
-    () => ({ activeRequestId, openActivity, closeActivity }),
-    [activeRequestId, openActivity, closeActivity],
+    () => ({
+      activeRequestId,
+      openActivity,
+      closeActivity,
+      leadsVersion,
+      bumpLeadsVersion,
+    }),
+    [activeRequestId, openActivity, closeActivity, leadsVersion, bumpLeadsVersion],
   );
 
   return (

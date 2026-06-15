@@ -47,6 +47,101 @@ OUTPUT DISCIPLINE — non-negotiable:
 """
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# v7.5 (heavy) Mom Test Discipline — embedded directly into subagent prompts.
+# /eliss SKILL.md ports STEP-2 Parallel Dispatch model to Claude Code Agents
+# that can read references/{vertical-playbook,mom-test-discipline}.md at run
+# time. The heavy fork calls the Anthropic Messages API directly — the model
+# CANNOT read files — so the discipline contract must be inlined verbatim
+# here.  This block is appended to each subagent system prompt.
+_MT_DISCIPLINE = """
+
+MOM TEST DISCIPLINE (v7.5+ — book "The Mom Test" by Rob Fitzpatrick):
+- Every pain/problem/risk you cite MUST tie to a concrete URL, filing, hiring
+  event, or news date. Unsourced inferences go into `assumptions[]`, not
+  `signals.positive[]`.
+- Speak the prospect's operational language, not the vendor's. Banking →
+  examination cycle, MRA, FFIEC, change-window. Healthcare → downtime drill,
+  break-the-glass, OCR portal, JCo survey. Manufacturing → MES, OEE, takt
+  time, OTIF, line-stop. Avoid: "I noticed your company...", "Are you
+  currently struggling with...", "How important is X to your business?", any
+  "would you ever / do you usually" hypothetical, and any feature-pitching
+  language. These banned phrasings fire the depth-lint gate on HOT.
+- Pair every evidence-backed pain with its `obstacle` (what blocks resolution
+  — examiner queue, turnaround calendar, parent platform mandate) and
+  `workaround` (the makeshift current solution — manual CSV reconciliation,
+  shared service account, scheduled SQL scripts). The workaround IS the
+  earlyvangelist test #4 (book p72) and the single most actionable evidence.
+- Signal taxonomy (book p105, p118): annotate each signal with a
+  `signal_symbol` ∈ {⚡ pain, ⚓ goal, ☐ obstacle, ⤴ workaround,
+  ^ background, ☑ purchasing, $ money, ♀ key-person}.
+"""
+
+
+_MT_TECH = """
+
+MOM TEST FIELDS (v7.5+, REQUIRED):
+- company.micro_segment — a who-where slice (e.g. "regional bank, 50–200
+  branches, mid core-consolidation, OCC-examined"), NOT the bare vertical
+  name. Book Ch7 p93: "If you aren't finding consistent problems and goals,
+  you don't yet have a specific enough customer segment."
+- company.operating_model — 2-3 sentences in customer language: team size,
+  shift coverage (24x5? 24x7? business hours?), where IAM/PAM ownership sits,
+  change-window cadence, approval chain. Pull from job postings + RR
+  departments + Glassdoor.
+"""
+
+
+_MT_COMPLIANCE = """
+
+MOM TEST FIELDS (v7.5+, REQUIRED):
+- Every signals.positive[] entry you produce includes:
+  * `id` — stable hyphen-prefixed slug (e.g., "sig-001")
+  * `signal_symbol` ∈ {⚡, ⚓, ☐, ⤴, ^, ☑, $, ♀}
+  * For pain/obstacle signals (⚡ or ☐): `obstacle` + `workaround` pair.
+    The workaround IS the earlyvangelist test #4 (book p72). If the
+    obstacle/workaround cannot be inferred from the harvest, set
+    workaround="insufficient evidence — must_ask_live".
+  * `evidence_strength` ∈ {"sourced", "inferred", "assumed"}.
+- Emit a top-level `signals.evidence_index` map: `{ "<sig_id>": "sourced" |
+  "inferred" | "assumed" }`. Renderer pills inferred/assumed claims.
+"""
+
+
+_MT_ORG = """
+
+MOM TEST FIELDS (v7.5+, REQUIRED):
+- org_intelligence.representative_pain_owner — the operator who actually
+  LIVES the pain, distinct from economic_buyer. For IAM at a regional bank:
+  economic_buyer = CIO/CISO; representative_pain_owner = IAM Architect or
+  Identity Engineering lead running the manual access-review reconciliation.
+  Book Ch7 p97 — talking to the pain-owner first is faster, more candid,
+  more specific. Shape: {name, title, why, source_url}.  The `why` is one
+  sentence describing what they do day-to-day that puts them at the pain.
+- signals.last_90_days_timeline[] — chronological list of dated real events
+  in the last 90 days, each {date: "YYYY-MM-DD", event, source_url, category,
+  evidence_strength}. Categories aligned with the existing signal_category
+  taxonomy. Powers the Tab 1 Last-90-Days Timeline card.  Empty on HOT/WARM
+  fires the depth-lint gate.
+"""
+
+
+_MT_BEHAVIORAL = """
+
+MOM TEST FIELDS (v7.5+, REQUIRED):
+- Every lead.personalization_hooks[] entry MUST cite a specific source
+  artifact: a conference talk title + URL, an article + URL, a GitHub repo +
+  URL, a podcast episode + URL, or a LinkedIn post + URL. Generic hooks
+  ("attended cyber conferences", "interested in zero trust") are useless —
+  the rep needs a specific thing they can name.  If only RR-sourced skills
+  are available, frame each as a discussion anchor with the URL the RR
+  baseline carries.
+- Flag which murky-must-learn questions could PLAUSIBLY be answered through
+  a peer-to-peer call (reference call with someone in the contact's network).
+  The parent synthesizes the final rep_list_of_3.
+"""
+
+
 _SUBAGENT_SYSTEMS = {
     "tech": (
         "You are a B2B technology-stack analyst working as one of four parallel "
@@ -82,6 +177,8 @@ _SUBAGENT_SYSTEMS = {
         "DO NOT speculate on budget authority, compliance pressure, executive\n"
         "personalities, or org structure — those are other subagents' lanes.\n"
         + _SUBAGENT_OUTPUT_DISCIPLINE
+        + _MT_DISCIPLINE
+        + _MT_TECH
     ),
 
     "compliance": (
@@ -127,6 +224,8 @@ _SUBAGENT_SYSTEMS = {
         "DO NOT analyze the company's tech stack, exec backgrounds, or\n"
         "personality fit — those are other subagents' lanes.\n"
         + _SUBAGENT_OUTPUT_DISCIPLINE
+        + _MT_DISCIPLINE
+        + _MT_COMPLIANCE
     ),
 
     "org": (
@@ -179,6 +278,8 @@ _SUBAGENT_SYSTEMS = {
         "DO NOT touch tech stack, compliance, or behavioral profiling —\n"
         "other subagents' lanes.\n"
         + _SUBAGENT_OUTPUT_DISCIPLINE
+        + _MT_DISCIPLINE
+        + _MT_ORG
     ),
 
     "behavioral": (
@@ -210,6 +311,8 @@ _SUBAGENT_SYSTEMS = {
         "DO NOT speculate on org structure, tech stack, or compliance —\n"
         "other subagents' lanes.\n"
         + _SUBAGENT_OUTPUT_DISCIPLINE
+        + _MT_DISCIPLINE
+        + _MT_BEHAVIORAL
     ),
 }
 
@@ -260,7 +363,8 @@ def _rr_degradation_note(rr_degraded, rr_degradation_reason):
 
 
 def build_subagent_messages(spec, intake, preflight_data, rr_baseline,
-                            *, rr_degraded=False, rr_degradation_reason=None):
+                            *, rr_degraded=False, rr_degradation_reason=None,
+                            payload_max_chars=12000):
     """Build the user message for one subagent.
 
     Each subagent gets:
@@ -316,7 +420,7 @@ def build_subagent_messages(spec, intake, preflight_data, rr_baseline,
         f"# Research request — lane: {name}\n\n"
         f"You are the **{name}** subagent. Stick to your lane. Return a JSON "
         f"fragment matching the keys listed in your system prompt.\n\n"
-        f"## Input\n```json\n{_trim_for_prompt(user_payload, max_chars=12000)}\n```"
+        f"## Input\n```json\n{_trim_for_prompt(user_payload, max_chars=payload_max_chars)}\n```"
         f"{_rr_degradation_note(rr_degraded, rr_degradation_reason)}\n\n"
         f"Use web_search up to your budget cap. When you're done, emit the JSON "
         f"fragment. No prose around it."
@@ -437,6 +541,16 @@ renderer's required sections. The later sections are valuable but recoverable.
     "deal_execution_risks": [{"risk": "label", "adjustment": -3}],
     "total_risk_adjustment": -4,
     "recommended_action": "PURSUE NOW|MONITOR|NURTURE|PASS",
+    "earlyvangelist": {
+      // Mom Test v7.5+ — book p72 4-pip scorecard. has_makeshift_solution.evidence
+      // MUST cite the workaround from signals.positive[].workaround.
+      "has_problem":            {"value": true,  "evidence": "...", "source_url": "..."},
+      "knows_problem":          {"value": true,  "evidence": "...", "source_url": "..."},
+      "has_budget":             {"value": false, "evidence": "...", "source_url": null},
+      "has_makeshift_solution": {"value": true,  "evidence": "...", "source_url": null},
+      "count": 3,
+      "rationale": "3/4 — HOT-worthy; budget is the missing pip."
+    },
     "scenarios": [
       {"label": "trigger label", "delta": 6, "before_score": 64, "after_score": 70,
        "before_tier": "WARM", "after_tier": "HOT", "kind": "positive|negative|pivot",
@@ -461,7 +575,39 @@ renderer's required sections. The later sections are valuable but recoverable.
     "employees_confidence": "CONFIRMED|ESTIMATED",
     "revenue": "$-prefixed string e.g. \"$84M\"",
     "hq": "full address string",
-    "ownership": "Public|Private|Government|..."
+    "ownership": "Public|Private|Government|...",
+    "micro_segment": "Mom Test v7.5+: who-where slice (e.g. 'regional bank, 50-200 branches, mid core-consolidation, OCC-examined'). NEVER the bare vertical name.",
+    "operating_model": "Mom Test v7.5+: 2-3 sentences in customer language describing day-to-day operating reality."
+  },
+
+  // v7.5+ Mom Test top-level `data` block — REQUIRED for HOT/WARM tiers
+  "data": {
+    "industry_operational_lens": "One paragraph (~80-120 words) in customer language, anchored on company.micro_segment, framing what system availability/identity/audit actually MEANS to this prospect. MUST use customer-language terms from the matched vertical (banking → 'examination cycle', healthcare → 'downtime drill', manufacturing → 'line-stop', etc.).",
+    "discovery_discipline": {
+      "zoom_strategy": "zoom_now | confirm_category_first",
+      "zoom_rationale": "Why this zoom_strategy.",
+      "good_questions": [
+        {"question": "...", "template": "Talk me through the last time…|How are you dealing with it now?|What are the implications of that?|What else have you tried?|Where does the money come from?", "anchor_fact_ref": "signals.positive[sig-005]"}
+      ],
+      "bad_questions": [
+        {"question": "Do you think it's a good idea?", "why_bad": "people lie to be nice (book p14)"}
+      ],
+      "anti_patterns": [
+        "'I noticed your company...' — feature-rep boilerplate; banned in opening_hook.",
+        "A compliment is not a buying signal (book Ch5)."
+      ]
+    },
+    "rep_list_of_3": [
+      {"question": "...", "why_it_matters": "...", "dmu_role": "representative_pain_owner|economic_buyer|champion"}
+    ],
+    "research_vs_ask": {
+      "settled_by_research": [{"fact": "...", "source_url": "..."}],
+      "must_ask_live":        [{"question": "...", "why_unsettleable": "..."}]
+    },
+    "deal_premortem": {
+      "if_lost": "Single most likely loss scenario in one sentence (book p101).",
+      "must_be_true_to_win": ["3-5 success preconditions"]
+    }
   },
 
   "org_intelligence": {
@@ -472,6 +618,10 @@ renderer's required sections. The later sections are valuable but recoverable.
     "technical_evaluator": {"name": "...", "title": "...", "linkedin": "...",
                             "confidence": "CONFIRMED|INFERRED"},
     "blocker":             {"name": "...", "title": "...", "confidence": "INFERRED"},
+    // Mom Test v7.5+ (book Ch7 p97) — the operator who actually LIVES the pain,
+    // distinct from economic_buyer. For IAM at a regional bank: pain_owner = IAM
+    // Architect running the manual reconciliation; economic_buyer = CIO/CISO.
+    "representative_pain_owner": {"name": "...", "title": "...", "why": "1 sentence describing day-to-day pain", "source_url": "..."},
     "additional_stakeholders": [{"role": "...", "name": "...", "title": "...", "relevance": "..."}],
     "future_stakeholders":     [{"role": "...", "why": "...", "action": "..."}],
     "ghost_stakeholders":      [{"title": "...", "why_matters": "..."}],
@@ -533,14 +683,31 @@ renderer's required sections. The later sections are valuable but recoverable.
 
   "signals": {
     "positive": [
-      {"signal": "...", "signal_category": "compliance_deadline|tech_investment|...",
+      // Mom Test v7.5+: each entry includes `id` (stable slug), `signal_symbol`
+      // ∈ {⚡ pain, ⚓ goal, ☐ obstacle, ⤴ workaround, ^ background, ☑ purchasing,
+      // $ money, ♀ key-person}, and — for pain/obstacle signals — an
+      // `obstacle` + `workaround` pair (book p105; workaround IS earlyvangelist
+      // test #4).
+      {"id": "sig-001", "signal": "...", "signal_symbol": "⚡",
+       "signal_category": "compliance_deadline|tech_investment|...",
        "points": 10, "age_days": 0, "source": "...", "confidence": "HIGH",
-       "evidence": "...", "evidence_urls": []}
+       "evidence": "...", "evidence_urls": [],
+       "obstacle": "what blocks them from solving — policy/contract/budget/legacy",
+       "workaround": "the makeshift current solution"}
     ],
     "negative": [
       {"flag": "...", "signal_category": "budget_pressure|...",
        "impact": -8, "age_days": 0, "source": "...", "evidence": "...", "evidence_urls": []}
-    ]
+    ],
+    // Mom Test v7.5+ — last-90-days chronological event list. Powers the
+    // Tab 1 Last-90-Days Timeline card. Empty on HOT/WARM fires depth-lint.
+    "last_90_days_timeline": [
+      {"date": "YYYY-MM-DD", "event": "...", "source_url": "...", "category": "audit_finding|hiring|budget_event|...", "evidence_strength": "sourced"}
+    ],
+    // Mom Test v7.5+ — evidence_strength map keyed by signal `id`. Renderer
+    // surfaces a soft confidence pill (inferred=yellow, assumed=gray) for
+    // any signal whose strength is below 'sourced'.
+    "evidence_index": {"sig-001": "sourced", "sig-002": "inferred"}
   },
 
   "pre_mortem": [
@@ -560,13 +727,28 @@ renderer's required sections. The later sections are valuable but recoverable.
     "ad360_talking_points":  ["..."],
     "log360_talking_points": ["..."],
     "objections": [{"objection": "...", "response": "..."}],
-    "outreach": {"channel": "Email + LinkedIn", "timing": "Within 5 business days",
-                 "hook": "..."},
+    // Mom Test v7.5+ (book Ch6 p83-87) — VFWPA outreach beats + Advisory Flip.
+    // Renderer prefers these when populated; falls back to legacy `hook`.
+    "outreach": {
+      "channel": "Email + LinkedIn", "timing": "Within 5 business days",
+      "hook": "legacy single-line hook (retained for backward compat)",
+      "advisory_posture": "One line: 'You are calling on a regional bank as a ManageEngine PAM/SIEM advisor, not pitching a tool.'",
+      "vision":   "What the world looks like once the operational problem is solved — in customer language.",
+      "framing":  "Industry advisor, not vendor. Why this conversation is worth their 30 minutes.",
+      "weakness": "What you do NOT yet know about the prospect; what you're hoping to learn.",
+      "pedestal": "Why THEY specifically — their operational depth, unique view from a representative pain-owner seat.",
+      "ask":      "CONCRETE advancement in time, reputation, or cash. A compliment is NOT advancement (book Ch5)."
+    },
     "decision_tree": {
       "root_question": "...",
       "branches": [{"signal": "...", "action": "..."}]
     }
   },
+
+  // Mom Test v7.5+ — deal pre-mortem (book p101). Layered over, NOT replacing,
+  // pre_mortem[] above. Note this lives inside `data.deal_premortem` per the
+  // schema shown earlier in the `data` block — repeated here only as a
+  // reminder so it isn't omitted.
 
   "recommended_outreach": [
     {"slot": 1, "template_name": "Compliance Gap", "template_id": "compliance_gap",
@@ -580,7 +762,8 @@ renderer's required sections. The later sections are valuable but recoverable.
 
 
 def build_parent_synthesis_messages(fragments, intake, preflight_data, rr_baseline,
-                                    *, rr_degraded=False, rr_degradation_reason=None):
+                                    *, rr_degraded=False, rr_degradation_reason=None,
+                                    payload_max_chars=80000):
     """Build the parent's user message — receives the 4 fragments + the inputs."""
     # Mark missing fragments so the parent knows the dossier will be partial.
     fragment_block = {
@@ -606,7 +789,7 @@ def build_parent_synthesis_messages(fragments, intake, preflight_data, rr_baseli
         "renderer is used by the light pipeline — wrong key names produce silently "
         "empty sections in the HTML.\n\n"
         "## Inputs\n"
-        f"```json\n{_trim_for_prompt(payload, max_chars=80000)}\n```\n\n"
+        f"```json\n{_trim_for_prompt(payload, max_chars=payload_max_chars)}\n```\n\n"
         + REQUIRED_DOSSIER_SHAPE
         + "\n## Rules\n"
         "1. EMIT KEYS IN THE PRIORITY ORDER given above. The first 9 priority keys "
@@ -662,7 +845,384 @@ def build_parent_synthesis_messages(fragments, intake, preflight_data, rr_baseli
         "11. Apply the system-prompt's CRITICAL GENERATION CONSTRAINTS exactly: Tab 1 "
         "dict-unwrap discipline, flat top-level scoring keys, compliance pressure "
         "HIGH/MEDIUM/LOW, dollar strings without tildes.\n"
-        "12. Output RAW JSON only — no prose, no ```json fences, no trailing "
+        "12. MOM TEST DISCIPLINE (v7.5+, REQUIRED for HOT/WARM tiers — book "
+        "'The Mom Test' by Rob Fitzpatrick):\n"
+        "    (a) Populate the top-level `data` block: `industry_operational_lens` "
+        "(one paragraph in customer language, anchored on company.micro_segment, "
+        "framing what system availability/identity/audit MEANS to this prospect "
+        "— banking uses 'examination cycle/MRA', healthcare 'downtime drill/OCR "
+        "portal', manufacturing 'line-stop/OTIF', etc.), `discovery_discipline` "
+        "(zoom_strategy + good_questions[] templated from book's real templates: "
+        "'Talk me through the last…' / 'How are you dealing with it now?' / "
+        "'What are the implications of that?' / 'Where does the money come from?' "
+        "+ bad_questions[] from book's verbatim bad-question bank + "
+        "anti_patterns[]), `rep_list_of_3` (book p54 — 3 prioritized live "
+        "questions only the conversation can settle, each tied to a dmu_role), "
+        "`research_vs_ask` (settled_by_research[] with source_url + must_ask_live[] "
+        "with why_unsettleable — book p116 cheatsheet, this is the dossier's "
+        "spine), and `deal_premortem` ({if_lost, must_be_true_to_win[]} per "
+        "book p101).\n"
+        "    (b) Populate `scoring.earlyvangelist` — 4 booleans "
+        "(has_problem/knows_problem/has_budget/has_makeshift_solution), each "
+        "{value, evidence, source_url}, plus count + rationale (book p72). "
+        "`has_makeshift_solution.evidence` MUST cite a workaround from "
+        "signals.positive[].workaround.\n"
+        "    (c) Populate `recommendations.outreach.{vision, framing, weakness, "
+        "pedestal, ask, advisory_posture}` — the book's VFWPA mnemonic "
+        "(Ch6 p83-87) + the Advisory Flip (Ch6 p87). `ask` MUST specify a "
+        "concrete advancement currency (time, reputation, cash). A compliment "
+        "is NOT advancement (book Ch5).\n"
+        "    (d) Populate `org_intelligence.representative_pain_owner` — the "
+        "operator who actually LIVES the pain, distinct from economic_buyer "
+        "(book Ch7 p97).\n"
+        "    (e) Each `signals.positive[]` entry gets `id` + `signal_symbol` "
+        "(⚡⚓☐⤴^☑$♀ per book p105/p118). Pain/obstacle signals also get "
+        "`obstacle` + `workaround` pairs. Add a top-level `signals.evidence_index` "
+        "map keyed by signal id.\n"
+        "    (f) Populate `signals.last_90_days_timeline[]` — chronological "
+        "dated events from the harvest. Empty on HOT/WARM fires depth-lint.\n"
+        "    (g) Populate `company.micro_segment` (who-where slice, NEVER the "
+        "bare vertical) + `company.operating_model` (2-3 sentences in customer "
+        "language). Book Ch7 p93.\n"
+        "    (h) `demo_playbook.{ad360,log360}.discovery_anchors[]` — sibling to "
+        "discovery_questions[], indexed identically. Each anchor "
+        "{anchor_fact, source_url} cites the dossier fact that justifies the "
+        "question. HOT requires 1:1 coverage; WARM requires ≥50%.\n"
+        "    (i) Banned phrasings in opening_hook / outreach.hook|vision|framing|ask "
+        "(case-insensitive scan, fires depth-lint on HOT): 'I noticed your "
+        "company...', 'Are you currently struggling with...', 'Do you need "
+        "better visibility into...', 'Would you ever consider...', 'How "
+        "important is X to your business?', 'Hope this email finds you well', "
+        "'Just checking in', 'I wanted to reach out because...'.\n"
+        "13. Output RAW JSON only — no prose, no ```json fences, no trailing "
         "commentary. The full response is parsed by `JSONDecoder.raw_decode`.\n"
     )
     return [{"role": "user", "content": body}]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SHARDED PARALLEL SYNTHESIS (selected by heavy_synthesis_mode auto/sharded)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# The monolithic build_parent_synthesis_messages above emits the WHOLE dossier in
+# one serial stream — the wall-clock wall (see docs/superpowers/specs/
+# 2026-06-11-heavy-sharded-synthesis-design.md). The builders below decompose
+# that into: a SPINE call (coherence-critical scoring/brief/meta), N parallel
+# SHARD calls (each owns a DISJOINT slice of top-level keys), and a NARRATIVE
+# reduce (full_dossier_markdown over the assembled structured dossier).
+#
+# Caching: every spine+shard call shares an IDENTICAL cacheable prefix
+# (system prompt + build_cached_inputs_text). The spine runs first and warms the
+# cache; the shards read it (cache_read ≈ 0.1× input). Only the cheap trailing
+# instruction differs per call. The narrative call uses a different prefix (the
+# assembled dossier) and does not share the cache — that's fine, it's one call.
+#
+# The schema (REQUIRED_DOSSIER_SHAPE) lives in the cached prefix, so every shard
+# sees the exact shape of its keys at near-zero marginal input cost; each shard's
+# trailing instruction then says "emit ONLY these top-level keys".
+
+
+def build_cached_inputs_text(fragments, intake, preflight_data, rr_baseline,
+                             *, rr_degraded=False, rr_degradation_reason=None,
+                             payload_max_chars=80000):
+    """The shared, cacheable context block reused verbatim by the spine and
+    every shard. Contains the inputs payload + the full dossier schema. Must be
+    byte-identical across all spine/shard calls of one request for the prompt
+    cache to hit."""
+    fragment_block = {
+        "tech": fragments.get("tech") or {"_missing": True},
+        "compliance": fragments.get("compliance") or {"_missing": True},
+        "org": fragments.get("org") or {"_missing": True},
+        "behavioral": fragments.get("behavioral") or {"_missing": True},
+    }
+    payload = {
+        "intake": intake,
+        "preflight": preflight_data,
+        "rr_baseline": rr_baseline,
+        "subagent_fragments": fragment_block,
+        "rr_degraded": rr_degraded,
+        "rr_degradation_reason": rr_degradation_reason,
+    }
+    return (
+        "# ELISS dossier synthesis — shared context (cached across all section calls)\n\n"
+        "Four research subagents (tech, compliance, org, behavioral) returned JSON "
+        "fragments. Below are those fragments + intake + preflight + RocketReach "
+        "baseline, then the canonical dossier schema. In the instruction that "
+        "follows this block you will be asked to emit ONE SPECIFIC SUBSET of the "
+        "dossier's top-level keys — follow the schema below for the exact shape of "
+        "those keys.\n\n"
+        "## Inputs\n"
+        f"```json\n{_trim_for_prompt(payload, max_chars=payload_max_chars)}\n```\n\n"
+        + REQUIRED_DOSSIER_SHAPE
+        + _rr_degradation_note(rr_degraded, rr_degradation_reason)
+    )
+
+
+# Cross-cutting discipline appended to every spine/shard instruction. Mirrors the
+# key-naming + dollar-string + dict-unwrap rules from build_parent_synthesis_messages
+# so a sharded dossier matches the renderer contract exactly.
+_SHARD_COMMON_DISCIPLINE = (
+    "\n\nGLOBAL DISCIPLINE (non-negotiable):\n"
+    "- Output RAW JSON only — a single JSON object, no prose, no ```json fences. "
+    "Parsed by JSONDecoder.raw_decode.\n"
+    "- Emit ONLY the top-level keys named in this instruction. Do NOT emit other "
+    "dossier sections (other calls own them) — extra keys are discarded and waste "
+    "your output budget.\n"
+    "- All values are PLAIN SCALARS or arrays/objects of scalars. Do NOT wrap "
+    "values in {value, confidence, tier} dicts; put confidence on a sibling "
+    "`<field>_confidence` key.\n"
+    "- Dollar amounts are $-prefixed strings with NO tildes (e.g. \"$45M\").\n"
+    "- Fill thin areas by INFERENCE from preflight + RR + intake, but never invent "
+    "specific facts (names, $ amounts, dates).\n"
+)
+
+SPINE_OWNS = ["meta", "scoring", "executive_brief"]
+
+_SPINE_INSTRUCTION = (
+    "# YOUR TASK — THE SPINE\n"
+    "Emit ONLY these three top-level keys: `meta`, `scoring`, `executive_brief`. "
+    "This is the coherence spine — your `scoring.tier` governs the entire dossier; "
+    "the section shards consume it. Be decisive and complete here.\n\n"
+    "- `scoring`: tier (HOT|WARM|COOL|COLD), final_score, composite, "
+    "overall_confidence, icp_match + icp_match_reason, and the FOUR dimension "
+    "dicts EMITTED FLAT under `scoring` (NOT under scoring.dimensions): "
+    "fit{score,confidence}, intent{score,confidence,signals[]}, "
+    "timing{score,confidence}, budget{score,confidence}. Rubric: fit 0-25, "
+    "intent 0-25, timing 0-30, budget 0-20; final_score = sum minus risk "
+    "adjustments. Also: risk_adjusted_composite, negative_modifiers[], "
+    "deal_execution_risks[], total_risk_adjustment, recommended_action, "
+    "earlyvangelist (4 pips has_problem/knows_problem/has_budget/"
+    "has_makeshift_solution each {value,evidence,source_url} + count + rationale), "
+    "and scenarios[] (≥3 for HOT/WARM: one positive, one negative, one pivot; "
+    "before_score MUST equal risk_adjusted_composite).\n"
+    "- `executive_brief`: a 200-400 char string — WHO + WHAT environment + WHY now "
+    "+ WHAT's missing, citing a specific fact (not generic prose).\n"
+    "- `meta`: {version: \"heavy-8.0.0-sharded\", generated: \"YYYY-MM-DD\", "
+    "rocketreach_budget: {session_totals: {person_lookups: N, company_lookups: M}}}.\n"
+    + _SHARD_COMMON_DISCIPLINE
+)
+
+
+# Each shard owns a DISJOINT set of top-level keys. `instruction` tells the model
+# exactly which keys to emit and the key-specific shape rules that matter for the
+# renderer. The schema in the cached prefix carries full detail; these are the
+# critical "don't get this wrong" reminders.
+SHARD_SPECS = [
+    {
+        "key": "org",
+        "owns": ["lead", "company", "org_intelligence"],
+        "instruction": (
+            "# YOUR TASK — ORG / PEOPLE / COMPANY\n"
+            "Emit ONLY: `lead`, `company`, `org_intelligence`.\n"
+            "- org_intelligence DMU roles (economic_buyer, champion, "
+            "technical_evaluator, blocker, representative_pain_owner) are FLAT keys "
+            "directly under org_intelligence — NOT nested under `.dmu` (a nested "
+            ".dmu renders an EMPTY DMU map). Also include additional_stakeholders[], "
+            "future_stakeholders[], ghost_stakeholders[], multi_thread_strategy, "
+            "headcount_trend.\n"
+            "- lead.title: if unverified, write \"Title to be confirmed\" — NEVER "
+            "\"Unknown\". Include seniority, authority, tenure, personalization_hooks[].\n"
+            "- company uses keys `hq` (NOT headquarters), `revenue` (NOT "
+            "revenue_estimate), `employees`, `employees_confidence`, ownership, "
+            "industry. Populate company.micro_segment (a who-where slice, NEVER the "
+            "bare vertical) and company.operating_model (2-3 sentences in customer "
+            "language)."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "tech",
+        "owns": ["technology"],
+        "instruction": (
+            "# YOUR TASK — TECHNOLOGY & COMPETITIVE\n"
+            "Emit ONLY: `technology`. Include ad_environment, cloud_posture, "
+            "digital_maturity, security_stack (list of short pill strings), "
+            "competitors_detected[], displacement_angle, competitive_readiness_score "
+            "+ competitive_readiness_basis, competitive_threat_matrix[] (≥3 rows, "
+            "each {competitor, presence_likelihood, basis, displacement_angle, "
+            "threat_level}), and renewal_intelligence[]. Use the tech subagent "
+            "fragment as primary evidence."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "compliance",
+        "owns": ["compliance", "budget_analysis"],
+        "instruction": (
+            "# YOUR TASK — COMPLIANCE & BUDGET\n"
+            "Emit ONLY: `compliance`, `budget_analysis`.\n"
+            "- `compliance` is a LIST of 3-5 framework objects. Each uses "
+            "`ad360_angle` / `log360_angle` (SHORT PROSE on how the product helps — "
+            "NOT the key `_fit`, and NOT a HIGH/MED/LOW value), plus `pressure` "
+            "(HIGH|MEDIUM|LOW), `urgency`, `evidence`, `evidence_urls`.\n"
+            "- `budget_analysis`: dollar fields ($-prefixed strings, no tildes) "
+            "estimated_it_spend, security_budget, affordability, budget_trend, "
+            "deal_authority, deal_cycle_months, calculation_basis; and USD INTEGER "
+            "fields estimated_deal_size, deal_size_basis, iam_iga_budget, siem_budget."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "signals",
+        "owns": ["signals"],
+        "instruction": (
+            "# YOUR TASK — BUYING SIGNALS\n"
+            "Emit ONLY: `signals` (a single object).\n"
+            "- signals.positive[] entries each get `id` (slug e.g. sig-001), "
+            "`signal_symbol` (one of ⚡⚓☐⤴^☑$♀); pain/obstacle signals (⚡ or ☐) "
+            "ALSO get an `obstacle` + `workaround` pair. Add a top-level "
+            "signals.evidence_index map keyed by signal id.\n"
+            "- signals.last_90_days_timeline[] is REQUIRED when the spine tier "
+            "(provided below) is HOT or WARM — chronological dated events "
+            "{date, event, source_url, category, evidence_strength}. Empty on "
+            "HOT/WARM fails the depth-lint gate.\n"
+            "- signals.negative[] as applicable, each {flag, signal_category, "
+            "impact, source, evidence, evidence_urls}."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "riskprep",
+        "owns": ["pre_mortem", "rep_readiness_checklist"],
+        "instruction": (
+            "# YOUR TASK — PRE-MORTEM & REP READINESS\n"
+            "Emit ONLY: `pre_mortem`, `rep_readiness_checklist`.\n"
+            "- `pre_mortem`: 3 distinct deal-loss scenarios grounded in the actual "
+            "dossier facts, each {scenario, why_it_could_happen, evidence_urls, "
+            "mitigation, earliest_signal}.\n"
+            "- `rep_readiness_checklist`: 5-8 specific items the rep must verify or "
+            "prepare before the first call."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "playbook",
+        "owns": ["demo_playbook", "recommendations", "recommended_outreach"],
+        "instruction": (
+            "# YOUR TASK — DEMO PLAYBOOK / RECOMMENDATIONS / OUTREACH\n"
+            "Emit ONLY: `demo_playbook`, `recommendations`, `recommended_outreach`.\n"
+            "- demo_playbook.{ad360,log360}: each has value_moments[] (each "
+            "{title, why_it_matters, tell_show_tell} tied to a specific dossier "
+            "fact), discovery_questions[], discovery_anchors[] (1:1 with "
+            "discovery_questions on HOT), top_objections[], cta; plus persona + "
+            "opening_hook at the top level of demo_playbook.\n"
+            "- recommendations: action, next_steps[], ad360_talking_points[], "
+            "log360_talking_points[], objections[], decision_tree, and outreach "
+            "(VFWPA: vision/framing/weakness/pedestal/ask + advisory_posture; `ask` "
+            "names a concrete advancement currency — time, reputation, or cash).\n"
+            "- recommended_outreach[]: 3 templates, each {slot, template_name, "
+            "template_id, voice, triggered_by[], subject, body, rationale}.\n"
+            "- BANNED phrasings anywhere in opening_hook / outreach (fire depth-lint "
+            "on HOT): 'I noticed your company...', 'Are you currently struggling "
+            "with...', 'Do you need better visibility into...', 'Would you ever "
+            "consider...', 'How important is X to your business?', 'Hope this email "
+            "finds you well', 'Just checking in', 'I wanted to reach out because...'."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "momdata",
+        "owns": ["data"],
+        "instruction": (
+            "# YOUR TASK — MOM TEST `data` BLOCK\n"
+            "Emit ONLY: `data` (a single object).\n"
+            "- industry_operational_lens (one paragraph ~80-120 words in customer "
+            "language, anchored on company.micro_segment from the spine/fragments).\n"
+            "- discovery_discipline: zoom_strategy + zoom_rationale + good_questions[] "
+            "(using the book's real templates: 'Talk me through the last…' / 'How are "
+            "you dealing with it now?' / 'What are the implications of that?' / 'What "
+            "else have you tried?' / 'Where does the money come from?') + "
+            "bad_questions[] (each {question, why_bad}) + anti_patterns[].\n"
+            "- rep_list_of_3 (3 questions, each {question, why_it_matters, dmu_role}).\n"
+            "- research_vs_ask (settled_by_research[] with source_url + must_ask_live[] "
+            "with why_unsettleable).\n"
+            "- deal_premortem ({if_lost, must_be_true_to_win[]})."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+    {
+        "key": "quality",
+        "owns": ["data_quality", "sources"],
+        "instruction": (
+            "# YOUR TASK — DATA QUALITY & SOURCES\n"
+            "Emit ONLY: `data_quality`, `sources`.\n"
+            "- `data_quality`: overall_confidence (HIGH|MEDIUM|LOW), 3-6 "
+            "assumptions[], 3-6 gaps[], and sources_actually_checked[] with ≥10 "
+            "entries (preflight + RR + each web_search the subagents ran), each "
+            "{source, access_method, layer, yielded_signal}.\n"
+            "- `sources`: an OBJECT keyed by Company/Person/Technology/Financial/"
+            "Compliance, each a list of {url, tier (A|B|C), label}; ≥10 URLs total. "
+            "Pull every URL from the subagent fragments' sources[] lists + preflight "
+            "source URLs + RR links. NEVER emit `sources: {}`."
+            + _SHARD_COMMON_DISCIPLINE
+        ),
+    },
+]
+
+
+def build_spine_instruction():
+    return _SPINE_INSTRUCTION
+
+
+def build_shard_instruction(spec, spine_obj):
+    """Trailing instruction for one shard — its key list + a compact view of the
+    spine so the section stays consistent with the verdict/tier."""
+    scoring = (spine_obj or {}).get("scoring") if isinstance(spine_obj, dict) else None
+    spine_view = {
+        "tier": (scoring or {}).get("tier"),
+        "final_score": (scoring or {}).get("final_score"),
+        "recommended_action": (scoring or {}).get("recommended_action"),
+        "executive_brief": (spine_obj or {}).get("executive_brief"),
+    }
+    return (
+        spec["instruction"]
+        + "\n\n## SPINE (already computed — keep your section consistent with this)\n"
+        f"```json\n{_trim_for_prompt(spine_view, max_chars=4000)}\n```\n"
+    )
+
+
+_NARRATIVE_INSTRUCTION = (
+    "# YOUR TASK — TAB 2 NARRATIVE\n"
+    "Write the `full_dossier_markdown` for the dossier whose STRUCTURED data is "
+    "given above. Output the markdown document DIRECTLY as RAW TEXT — do NOT wrap "
+    "it in JSON, do NOT use ```fences, do NOT add any preamble. Start with the "
+    "first markdown heading and nothing before it.\n\n"
+    "Length: aim for 8000-15000 characters — DENSE, not padded. Be concise; do not "
+    "exceed ~15000 characters. Cover, in this order: (1) Score Summary, "
+    "(2) Executive Brief, (3) Person Profile, (4) Company Profile, (5) Technology "
+    "+ Competitive Matrix, (6) Org Intelligence + Ghost Stakeholders, (7) Budget, "
+    "(8) Compliance, (9) Buying Signals, (10) Deal Execution Risks, (11) Scoring "
+    "Rationale, (12) Strategic Recs, (13) Pre-Mortem, (14) Rep Readiness, "
+    "(15) Research Sources. Use markdown ## / ### headings and bullet lists. "
+    "Callouts open at COLUMN 0 with `**Why:**`, `**Action:**`, `**Trigger:**` — "
+    "NEVER preceded by `>` (a blockquote breaks the callout). Cite source tier "
+    "letters [A]/[B]/[C] inline after each evidence sentence. Every fact MUST come "
+    "from the structured dossier above — do NOT invent."
+)
+
+
+def build_narrative_messages(assembled_dossier, *, payload_max_chars=80000):
+    """Build the system+user messages for the narrative reduce. Receives the
+    assembled structured dossier (without full_dossier_markdown) and asks for the
+    prose AS RAW MARKDOWN (not JSON) — a single text field has no reason to be
+    JSON-wrapped, and raw text makes a max_tokens stop non-fatal (it just yields
+    slightly shorter, still-valid prose instead of unparseable JSON)."""
+    body = (
+        "# ELISS dossier — structured data (source of truth for the narrative)\n\n"
+        f"```json\n{_trim_for_prompt(assembled_dossier, max_chars=payload_max_chars)}\n```\n\n"
+        + _NARRATIVE_INSTRUCTION
+    )
+    return [{"role": "user", "content": body}]
+
+
+# All top-level dossier keys, owned exactly once across spine + shards + narrative.
+# Used by the disjointness unit test and as documentation of the merge contract.
+NARRATIVE_OWNS = ["full_dossier_markdown"]
+
+
+def all_owned_keys():
+    keys = list(SPINE_OWNS)
+    for spec in SHARD_SPECS:
+        keys.extend(spec["owns"])
+    keys.extend(NARRATIVE_OWNS)
+    return keys

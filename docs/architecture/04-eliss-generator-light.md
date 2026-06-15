@@ -114,13 +114,26 @@ The output is `ELISS_<company>_<lead>_<date>.html` in the OS temp dir. If `rr_de
 
 ### 6. `lint`
 
-`lib/depth_lint.py` runs against the rendered HTML and the dossier's tier:
-- For HOT-tier dossiers, it asserts minimum density: ≥20 source URLs, ≥40 tier badges, ≥6 callout boxes, ≥3 RR pills (when RR was used), ≥10 timeline dots.
-- For lower tiers, the floors are relaxed.
+`lib/depth_lint.py` scans the rendered HTML for **empty-state literals**, split into two severity classes (not density thresholds):
+
+- **HARD** — section-level failures: `No executive brief`, `No applicable frameworks`, `No sources cited`. A HARD hit on a **HOT/WARM** lead is **blocking**. `No sources cited` is in `_ALWAYS_BLOCKING`, so it blocks at **any** tier (a zero-citation dossier is unshippable regardless of lead value).
+- **SOFT** — isolated empty cells: an `Unknown` field value, an em-dash heatmap cell, a `None detected` pill, an empty budget waterfall. These mean a specific value couldn't be resolved, not that a section is missing.
+
+Two things changed in v1.1.0:
+
+- **Source backfill (in `generate_report.py`, before lint runs).** When the structured `sources` array is empty, the renderer salvages cited URLs from the narrative — so the Source Quality donut populates and `No sources cited` only survives when the dossier truly cites zero URLs.
+- **Tier-aware soft tolerance.** SOFT hits no longer force `partial` one-for-one. HOT/WARM stay strict (tolerance 0); COLD/COOL tolerate up to `light_lint_soft_tolerance` empty cells (super-admin setting, default **4**) before the dossier is marked `partial`.
 
 If `lint_result["blocking"]` is true, the pipeline retries synthesis ONCE — patching `stage=synthesis_retry` so the UI can label this second pass differently. Token usage from the second attempt is added to the row.
 
-A second blocking failure does **not** trigger another retry — instead the lint stage exits with non-blocking hits, and the terminal status becomes `partial`. Same outcome if `rr_degraded` was set (an OSINT-only dossier is partial by definition).
+A second blocking failure does **not** trigger another retry. The terminal status is then:
+
+```python
+is_partial = (lint_result["hard_total"] > 0          # any HARD hit survived
+              or rr_degraded                           # OSINT-only dossier
+              or _soft_hits_exceed_tolerance(...))      # SOFT hits > tier tolerance
+terminal_status = "partial" if is_partial else "succeeded"
+```
 
 ### 7. `upload`
 

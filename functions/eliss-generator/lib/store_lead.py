@@ -149,6 +149,7 @@ COL_MAX = {
     "company": 255,
     "email": 255,
     "eliss_version": 50,
+    "generation_engine": 12,
     "tier": 10,
     "confidence": 20,
     "icp_rating": 20,
@@ -206,9 +207,10 @@ def _clip(s, max_len):
     return s
 
 
-def _clip_row(row):
+def _clip_row(row, col_max=None):
     out = dict(row)
-    for k, m in COL_MAX.items():
+    limits = col_max or COL_MAX
+    for k, m in limits.items():
         if isinstance(out.get(k), str) and len(out[k]) > m:
             out[k] = out[k][: m - 1] + "…"
     return out
@@ -383,7 +385,23 @@ def _build_signals(dossier_dict):
     return signals
 
 
-def _flatten_lead_fields(dossier_dict, filename, storage_path, user_id):
+def _name_from_email(email):
+    """Derive a display name from an email local part — last-resort fallback
+    for the mandatory leads.lead_name column.
+
+    jason.brice@amba.info -> "Jason Brice". Returns None when there's no usable
+    local part so the caller can fall through to a literal default.
+    """
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    local = email.split("@", 1)[0]
+    parts = [p for p in re.split(r"[._+-]+", local) if p]
+    if not parts:
+        return None
+    return " ".join(p.capitalize() for p in parts)
+
+
+def _flatten_lead_fields(dossier_dict, filename, storage_path, user_id, intake=None):
     """Project the dossier dict into the leads-table row shape.
 
     Source-of-truth contracts live in feedback_eliss_tab1_card_contracts.md;
@@ -430,12 +448,26 @@ def _flatten_lead_fields(dossier_dict, filename, storage_path, user_id):
         "user_id": user_id,
         "storage_path": storage_path,
         "filename": filename,
-        "lead_name": _extract_value(lead.get("name")),
+        # Mandatory Catalyst column — must never be empty. Synthesis output is
+        # the preferred source, but under RR-degraded (rr_company_miss) runs the
+        # LLM intermittently omits lead.name, which previously caused a 403
+        # MANDATORY_MISSING on insert. Fall back to the known intake identity,
+        # then an email-derived name, then a literal guard.
+        "lead_name": (
+            _extract_value(lead.get("name"))
+            or (intake or {}).get("name")
+            or _name_from_email((intake or {}).get("email"))
+            or "Unknown Contact"
+        ),
         "lead_title": _extract_value(lead.get("title")),
         "company": _extract_value(company.get("name")),
         "email": _extract_value(lead.get("email")),
         "report_date": catalyst_date_only(_extract_value(meta.get("generated"))),
         "eliss_version": _extract_value(meta.get("version") or meta.get("eliss_version")),
+        # Self-identifying engine stamp: this is the Light generator. Its Heavy
+        # sibling (eliss-heavy-generator) writes "heavy". Surfaced as an
+        # admin-only Heavy/Light pill in the leads UI.
+        "generation_engine": "light",
         "composite_score": _scoring_scalar(scoring, "final_score", "composite_score"),
         "tier": _scoring_scalar(scoring, "tier"),
         "confidence": _scoring_scalar(scoring, "overall_confidence", "confidence"),
@@ -473,11 +505,17 @@ def _flatten_lead_fields(dossier_dict, filename, storage_path, user_id):
     return row
 
 
-def store_lead(app, user_id, filename, html, dossier_dict):
+def store_lead(app, user_id, filename, html, dossier_dict, intake=None,
+               clip_overrides=None):
     """Write the dossier to Stratus + leads + lead_signals.
 
     Composite-key upsert matches the Node upload path:
     (user_id, lead_name, company, report_date).
+
+    clip_overrides: optional {column: max_len} from the super-admin settings
+    (clip_verdict_insight / clip_executive_brief / clip_demo_playbook). The
+    API clamps these to the real column width, so a value here never exceeds
+    the DB varchar/text limit. Merged over COL_MAX; absent => COL_MAX stands.
     """
     if not user_id:
         raise ValueError("user_id required")
@@ -505,8 +543,9 @@ def store_lead(app, user_id, filename, html, dossier_dict):
     # Compose row + composite-key lookup
     zcql = app.zcql()
     datastore = app.datastore()
-    base_row_raw = _flatten_lead_fields(dossier_dict, filename, storage_path, user_id)
-    base_row = _clip_row(base_row_raw)
+    base_row_raw = _flatten_lead_fields(dossier_dict, filename, storage_path, user_id, intake)
+    effective_col_max = {**COL_MAX, **clip_overrides} if clip_overrides else COL_MAX
+    base_row = _clip_row(base_row_raw, effective_col_max)
 
     lead_name = base_row.get("lead_name")
     company = base_row.get("company")

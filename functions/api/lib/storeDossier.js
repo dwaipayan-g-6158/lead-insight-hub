@@ -12,6 +12,7 @@ const COL_MAX = {
   company: 255,
   email: 255,
   eliss_version: 50,
+  generation_engine: 12,
   tier: 10,
   confidence: 20,
   icp_rating: 20,
@@ -215,6 +216,9 @@ async function parseAndStoreDossier(app, { userId, filename, html }) {
     email: parsed.email,
     report_date: catalystDateOnly(parsed.report_date),
     eliss_version: parsed.eliss_version,
+    // CSV/HTML uploads aren't produced by either generator — tag them as
+    // imported so the admin pill reads "Imported" rather than Heavy/Light.
+    generation_engine: "import",
     composite_score: parsed.composite_score,
     tier: parsed.tier,
     confidence: parsed.confidence,

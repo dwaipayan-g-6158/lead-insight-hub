@@ -19,6 +19,13 @@ type AuthCtx = {
   session: { userId: string } | null;
   loading: boolean;
   isAdmin: boolean;
+  // Single super-admin (project owner) gate, from GET /me (SUPER_ADMIN_EMAIL).
+  // Governs the global generation-settings panel only. UI-gate — the
+  // /admin/settings route re-checks server-side via requireSuperAdmin.
+  isSuperAdmin: boolean;
+  // Server-computed entitlement for the ELISS-Heavy UI (mirrors HEAVY_ALLOWLIST
+  // via GET /me). UI-gate only — the dossiers route re-checks server-side.
+  heavyAllowed: boolean;
   roleLoading: boolean;
   refreshRole: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -32,12 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CatalystUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [heavyAllowed, setHeavyAllowed] = useState(false);
   const [roleLoading, setRoleLoading] = useState(true);
   const pollRef = useRef<number | null>(null);
 
   const fetchProfile = async (currentUser: CatalystUser | null) => {
     if (!currentUser) {
       setIsAdmin(false);
+      setIsSuperAdmin(false);
+      setHeavyAllowed(false);
       setRoleLoading(false);
       return;
     }
@@ -55,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // render them.
       const res = await getMyProfile();
       setIsAdmin(!!res?.isAdmin);
+      setIsSuperAdmin(!!res?.isSuperAdmin);
+      setHeavyAllowed(!!res?.heavyAllowed);
       setUser((prev) =>
         prev
           ? {
@@ -68,6 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.warn("[auth] failed to load profile", e);
       setIsAdmin(false);
+      setIsSuperAdmin(false);
+      setHeavyAllowed(false);
     } finally {
       setRoleLoading(false);
     }
@@ -142,6 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setIsAdmin(false);
+    setIsSuperAdmin(false);
+    setHeavyAllowed(false);
   };
 
   const refreshRole = async () => {
@@ -157,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isAdmin,
+        isSuperAdmin,
+        heavyAllowed,
         roleLoading,
         refreshRole,
         refreshUser,

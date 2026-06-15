@@ -51,9 +51,60 @@ All dimension scores must be dicts with `score` + `confidence`, not bare ints.
   "negative_modifiers":   [{"modifier": "label", "points": -8}],
   "deal_execution_risks": [{"risk": "label", "adjustment": -3}],
   "total_risk_adjustment": -13,
-  "recommended_action": "PURSUE NOW"
+  "recommended_action": "PURSUE NOW",
+  "earlyvangelist": {
+    "has_problem":              {"value": true,  "evidence": "...", "source_url": "..."},
+    "knows_problem":            {"value": true,  "evidence": "...", "source_url": "..."},
+    "has_budget":               {"value": false, "evidence": "...", "source_url": null},
+    "has_makeshift_solution":   {"value": true,  "evidence": "...", "source_url": null},
+    "count": 3,
+    "rationale": "3/4 — HOT-worthy; budget is the missing pip."
+  }
 }
 ```
+
+**v7.6+ (Mom Test upgrade) — `scoring.earlyvangelist`.** Four booleans per book p72. Each `{value, evidence, source_url}`. `count` ∈ 0–4 + `rationale`. The `has_makeshift_solution` evidence MUST cite the workaround from `signals.positive[].workaround` (or `obstacle/workaround` on a dedicated problem entry). 4-pip = strongest enterprise buyer; 3-pip = HOT-worthy; 2-pip = WARM; 0–1 = real lead but not the buying moment. Renders as the Tab 1 4-pip Earlyvangelist Scorecard (collapsed-by-default).
+
+---
+
+## data — Mom Test discipline surfaces (v7.6+)
+
+New top-level `data` block holds the Mom Test surfaces. Powers Tab 1 hero cards (Operational Lens always-open, Research-vs-Ask always-open, Rep's List of 3 always-open, Discovery Discipline collapsed) + Tab 2 sections.
+
+```json
+"data": {
+  "industry_operational_lens": "One paragraph in customer language, anchored on company.micro_segment, framing what system availability/identity/audit MEANS to this prospect. Uses ≥2 phrases from the matched vertical-playbook section's Customer Language list.",
+  "discovery_discipline": {
+    "zoom_strategy": "zoom_now | confirm_category_first",
+    "zoom_rationale": "Why this zoom_strategy — cite vertical-playbook section.",
+    "good_questions": [
+      {"question": "...", "template": "Talk me through the last time…", "anchor_fact_ref": "signals.positive[sig-005]"}
+    ],
+    "bad_questions": [
+      {"question": "...", "why_bad": "anything involving the future is an over-optimistic lie (book p15)"}
+    ],
+    "anti_patterns": [
+      "'I noticed your company...' — feature-rep boilerplate.",
+      "Treating a compliment as a buying signal — a stall is not advancement (Ch5)."
+    ]
+  },
+  "rep_list_of_3": [
+    {"question": "...", "why_it_matters": "...", "dmu_role": "representative_pain_owner"},
+    {"question": "...", "why_it_matters": "...", "dmu_role": "economic_buyer"},
+    {"question": "...", "why_it_matters": "...", "dmu_role": "economic_buyer"}
+  ],
+  "research_vs_ask": {
+    "settled_by_research": [{"fact": "...", "source_url": "..."}],
+    "must_ask_live":        [{"question": "...", "why_unsettleable": "..."}]
+  },
+  "deal_premortem": {
+    "if_lost": "The single most likely loss scenario in one sentence (book p101).",
+    "must_be_true_to_win": ["3–5 success preconditions"]
+  }
+}
+```
+
+**Required for HOT/WARM.** `industry_operational_lens` (lint: `[depth-lint] industry_language_missing` if <2 vertical-playbook terms). `discovery_discipline.good_questions[i]` must be a prospect-specific instance of a real Mom Test template tied to a dossier fact via `anchor_fact_ref`. `research_vs_ask` is the dossier's spine (book p116); without it, the dossier degrades into a vendor brochure. `rep_list_of_3` — exactly 3, no more (book p54). `deal_premortem` layers over, NOT replaces, `pre_mortem[]`.
 
 ---
 
@@ -105,9 +156,13 @@ Renderer reads `hq` (NOT `headquarters`), `employees` (NOT `num_employees_*`), `
   "employees_confidence": "CONFIRMED|ESTIMATED",
   "revenue": "$8.3B",
   "hq": "200 I Street SE, Washington, DC 20005",
-  "ownership": "Public sector / Government"
+  "ownership": "Public sector / Government",
+  "micro_segment": "US state agency, mid-sized, on a NASPO ValuePoint contract — cyber-grant-funded SIEM modernization in motion",
+  "operating_model": "SecOps team of ~12 covering 24×5 in-house with weekend on-call rotations; IAM ownership sits with Identity Engineering team; change windows align to fiscal-year boundaries and quarterly CAB approval."
 }
 ```
+
+**v7.6+ (Mom Test upgrade).** `micro_segment` is REQUIRED — a sliced who-where from `references/vertical-playbook.md`, NEVER the bare vertical name. `operating_model` is REQUIRED — 2–3 sentences in customer language. Both anchor the Tab 1 Operational Lens hero band.
 
 ---
 
@@ -306,12 +361,15 @@ DMU role discipline:
   "champion":            {"name": "...", "title": "...", "email": "...", "phone": "...", "linkedin": "...", "confidence": "CONFIRMED"},
   "technical_evaluator": {"name": "...", "title": "...", "linkedin": "...", "confidence": "CONFIRMED|INFERRED"},
   "blocker":             {"name": "...", "title": "...", "confidence": "INFERRED"},
+  "representative_pain_owner": {"name": "...", "title": "...", "why": "...", "source_url": "..."},
   "additional_stakeholders": [{"role": "Influencer|Sponsor|EB-delegated", "name": "...", "title": "...", "relevance": "..."}],
   "future_stakeholders":     [{"role": "...", "why": "...", "action": "..."}],
   "multi_thread_strategy":   "one-sentence strategy for working multiple stakeholders in parallel",
   "headcount_trend":         "..."
 }
 ```
+
+**v7.6+ (Mom Test upgrade).** `representative_pain_owner` is the operator who actually LIVES the pain (book Ch7 p97) — distinct from `economic_buyer`. For an IAM problem at a regional bank: economic_buyer = CIO/CISO; representative_pain_owner = the IAM Architect or Identity Engineering lead who actually runs the access-review meat-grinder. Talking to the pain-owner first is faster, more candid, and produces specifics. The `why` field is one sentence explaining what they do day-to-day that puts them at the pain.
 
 ---
 
@@ -341,16 +399,29 @@ Allowed `pressure`: `"HIGH"` | `"MEDIUM"` | `"LOW"`.
 
 ```json
 {
+  "id": "sig-001",
   "signal": "NERC CIP mandatory — no SIEM confirmed",
+  "signal_symbol": "⚡",
   "signal_category": "compliance_deadline",
   "points": 10,
   "age_days": 0,
   "source": "NERC regulatory [A]",
   "confidence": "HIGH",
   "evidence": "detail text",
-  "evidence_urls": []
+  "evidence_urls": [],
+  "obstacle": "Multi-year turnaround calendar — no OT change window before next outage",
+  "workaround": "Engineering laptop with dual NIC occasionally bridges IT/OT for compliance evidence collection"
 }
 ```
+
+**v7.6+ (Mom Test upgrade).** Each entry SHOULD include:
+- `id` — stable hyphen-prefixed slug.
+- `signal_symbol` ∈ {⚡ pain, ⚓ goal, ☐ obstacle, ⤴ workaround, ^ background, ☑ purchasing, $ money, ♀ key-person} per `references/mom-test-discipline.md`.
+- For pain/obstacle signals (⚡ or ☐): `obstacle` + `workaround` pair (book p105 — the workaround IS the earlyvangelist test #4, non-negotiable).
+
+Add a top-level `signals.evidence_index = { "<id>": "sourced" | "inferred" | "assumed" }` map. The renderer reads it and renders a soft confidence pill (inferred=yellow, assumed=gray) next to the tier pill for any signal whose strength is below `sourced`. Empty map is fine — defaults to `sourced` for any unindexed signal.
+
+Add a top-level `signals.last_90_days_timeline[]`: chronological list of dated real events from the last 90 days, each `{date: "YYYY-MM-DD", event, source_url, category, evidence_strength}`. Category aligned with existing `signal_category` taxonomy. Powers the Tab 1 Last-90-Days Timeline card. Empty on HOT/WARM fires `[depth-lint] timeline_empty_for_hot_lead`.
 
 `negative[]` uses key `flag` (NOT `signal`):
 

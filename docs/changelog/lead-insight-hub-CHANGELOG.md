@@ -10,7 +10,32 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — v1.0.0 is the production baseline)_
+- _(none — all development work through 2026-06-13 is promoted; see [1.1.0])_
+
+---
+
+## [1.1.0] — 2026-06-13
+
+Development work promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000235055`, Development → Production, fully additive — 3 functions + web client updated, 1 table + 10 columns added (15 entities total), zero deletions, no row-data changes). See [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md) §"Promote to production" for the (corrected) mechanism.
+
+### Added
+
+- **Super-admin Generation Settings panel** (`/settings`, gated by `SUPER_ADMIN_EMAIL`, not by role). Tunes every ELISS Light/Heavy lever live — no redeploy. Backed by the new `app_settings` singleton table; both generators read it at job start via `lib/app_settings.load_settings()`. The React panel fetches the schema from `GET /admin/settings` at runtime, so adding a setting needs **no client rebuild**. Canonical schema: `functions/api/lib/generation-settings.schema.json`.
+- **Tier-aware soft-warning tolerance** — two settings `light_lint_soft_tolerance` / `heavy_lint_soft_tolerance` (int, default **4**, range 0–20). HOT/WARM stay strict (tolerance 0 → any empty cell warns); COLD/COOL tolerate up to the configured number of isolated empty cells before a dossier is marked `partial`.
+- **Checkpoint-and-resume** for the generation pipeline. New `dossier_requests` columns `resume_attempts` (int), `checkpoint_ready` (boolean), `resume_target` (varchar). Expensive synthesis output is persisted to Stratus before the kill-prone render tail; a stale-sweep auto-dispatches a resume job that finishes from the checkpoint.
+- **`leads.generation_engine`** column + admin-only Heavy/Light/Imported pill (distinct from `eliss_version`, which is the skill version).
+- **Source-quality backfill** in `generate_report.py` (`_backfill_sources_from_markdown`) — when structured `sources` comes back empty, the renderer salvages cited URLs from the narrative (tier markers `[A]/[B]/[C]` or domain heuristic) so the Source Quality donut populates instead of showing "No sources cited".
+- **Minimize-to-pill / reset-password dialog animations** — an opt-in `flyTarget` prop on `DialogContent` runs a FLIP that collapses the dialog toward its top-right target (the Dossier-Requests pill, or the account-menu trigger for the reset dialog). CSS `@keyframes dialog-fly-in/out` in `styles.css`.
+
+### Changed
+
+- **`depth_lint.py` reworked into HARD vs SOFT literal classes.** HARD = section-level failures (`No executive brief`, `No applicable frameworks`, `No sources cited`); SOFT = isolated empty cells (`Unknown`, em-dash heatmap cell, `None detected`, empty waterfall). The terminal `partial` decision is now `hard_total > 0 OR rr_degraded [OR fanout_partial] OR soft_hits > tier_tolerance`.
+- **Environment-aware `catalyst-client.ts`** — detects `.development.` in the hostname to pick the dev vs prod ZAID (`50042142947`), org id, and Stratus domain. One build serves both environments.
+
+### Fixed
+
+- **Empty Source Quality donut** on dossiers whose structured `sources` array came back empty — fixed by the backfill above, plus `No sources cited` is now an **always-blocking** lint literal (regenerate at any tier; a zero-citation dossier is unshippable regardless of lead value).
+- **Reset-password dialog close animation** jumped ~half its width to the left — Tailwind v4 emits `translate-x/y` as the CSS `translate` *property*, so the keyframes must not re-apply `translate(-50%,-50%)`.
 
 ---
 

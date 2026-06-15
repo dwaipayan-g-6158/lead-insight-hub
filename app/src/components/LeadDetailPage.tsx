@@ -6,8 +6,10 @@ import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DimensionBar } from "@/components/DimensionBar";
-import { ArrowLeft, Download, FileWarning, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileWarning, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { tierClasses } from "@/lib/tier";
+import { EngineBadge } from "@/components/EngineBadge";
 import type { LeadRow, Signal } from "@/types/leads";
 
 export function LeadDetailPage({ id }: { id: string }) {
@@ -125,7 +127,7 @@ export function LeadDetailPage({ id }: { id: string }) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  if (loading) return <div className="grid place-items-center py-24"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  if (loading) return <div className="grid place-items-center py-24"><Spinner className="h-5 w-5 text-muted-foreground" /></div>;
   if (err || !data) return <Card className="p-6 text-sm text-destructive">{err || "Not found"}</Card>;
 
   const { lead, signals, html, htmlUrl, storage_status } = data;
@@ -241,7 +243,12 @@ export function LeadDetailPage({ id }: { id: string }) {
         margin-right: 0 !important;
         padding: 0 !important;
       }
-      table.md-table {
+      /* Legacy dossiers (rendered before the stacked-card generator CSS)
+         carry no per-cell data-label, so keep the horizontal-scroll fix for
+         them. New dossiers emit td[data-label] and use the generator's baked
+         stacked-card layout at <=600px — scope these overrides away from
+         those so we don't force them back into a 560px scroller. */
+      table.md-table:not(:has(td[data-label])) {
         table-layout: auto !important;
         font-size: 12px;
         min-width: 560px !important;
@@ -255,8 +262,8 @@ export function LeadDetailPage({ id }: { id: string }) {
         max-width: none !important;
         width: auto !important;
       }
-      table.md-table th,
-      table.md-table td {
+      table.md-table:not(:has(td[data-label])) th,
+      table.md-table:not(:has(td[data-label])) td {
         padding: 6px 8px !important;
         vertical-align: top;
         line-height: 1.4;
@@ -449,6 +456,7 @@ export function LeadDetailPage({ id }: { id: string }) {
                   {lead.tier}
                 </span>
               )}
+              {isAdmin && <EngineBadge engine={lead.generation_engine} />}
               <div className="text-3xl font-bold ml-auto">{lead.composite_score ?? "—"}</div>
             </div>
           </Card>

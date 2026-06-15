@@ -31,11 +31,33 @@ html body[data-scroll-locked] {
   padding-right: 0 !important;
 }
 
+/* Tailwind v4 dropped the legacy default `cursor: pointer` on <button>, so
+   buttons (incl. the Sign in / Sign up link-buttons) showed the text/arrow
+   cursor. Restore pointer cursor app-wide. Disabled buttons keep the default
+   arrow to signal they're not actionable. */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Global focus ring fallback — visible whenever a component doesn't set its own */
 :focus-visible {
   outline: 2px solid oklch(0.65 0.19 275 / 0.75);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Radix menu surfaces provide their OWN highlight (focus:bg-accent), so exempt
+   them from the global focus ring above. Without this, the first (keyboard /
+   programmatic) open of a menu paints a blue outline on the active item via
+   :focus-visible, while a later hover-driven open shows only the background
+   highlight — an inconsistent, jarring ring. Higher specificity than the bare
+   :focus-visible rule, so the menu always shows just the bg highlight. */
+[role="menu"]:focus-visible,
+[role="menu"] [role="menuitem"]:focus-visible,
+[role="menu"] [role="menuitemcheckbox"]:focus-visible,
+[role="menu"] [role="menuitemradio"]:focus-visible {
+  outline: none;
 }
 
 /* Respect user motion preferences */
@@ -223,6 +245,31 @@ html {
 
 /* ---------- Dashboard animations ---------- */
 @layer utilities {
+  /* GPU-composite all spinning icons. Without this, the browser re-rasterizes
+     the rotating SVG every frame and snaps it to the physical pixel grid; at
+     small sizes (e.g. the 14-16px header pill spinner) on fractional display
+     scaling (Windows 125%/150% -> DPR 1.25/1.5) that snapping reads as an
+     in-place shake/vibration rather than a clean spin. Promoting to its own
+     compositing layer makes the GPU rotate a cached texture instead. Mirrors
+     the .logo-spin treatment below. */
+  .animate-spin {
+    will-change: transform;
+    transform-origin: center;
+    backface-visibility: hidden;
+  }
+  /* Crisp ring spinner — a COMPLETE circle (faint) with one solid accent arc
+     that orbits. Because the circle outline is continuous and symmetric, only
+     the colour rotates; there are no thin rounded stroke-caps whipping across
+     the pixel grid, so it never shimmers/shakes at fractional display scaling
+     the way the small lucide arc icon did. Colour follows `currentColor`. */
+  .spinner-ring {
+    display: inline-block;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in oklch, currentColor 28%, transparent);
+    border-top-color: currentColor;
+    animation: ring-spin 0.8s linear infinite;
+    will-change: transform;
+  }
   .transition-width {
     transition: width 700ms cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -378,6 +425,120 @@ html {
   }
 }
 
+/* Continuous slow logo rotation (mirrors the intro site's spin-slow utility:
+   360deg, 20s, linear, infinite). transform-only -> GPU-composited, no reflow,
+   smooth on mobile. transform-origin keeps the tap target centered/fixed. */
+@keyframes logo-spin {
+  to { transform: rotate(360deg); }
+}
+/* Ring spinner rotation — own keyframe so it never depends on Tailwind's
+   utility `spin` being present, and so reduced-motion can target it. */
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+.logo-spin {
+  transform-origin: 50% 50%;
+  animation: logo-spin 20s linear infinite;
+  will-change: transform;
+}
+
+/* ELISS-Heavy unlock confirmation: a brief glow pulse. Applied to a WRAPPER
+   element (not the rotating img) so .logo-spin is never re-declared/restarted
+   -- it animates filter+opacity only, which composes over the rotation. */
+@keyframes logo-armed-pulse {
+  0% { filter: drop-shadow(0 0 0 transparent); opacity: 1; }
+  35% { filter: drop-shadow(0 0 12px oklch(0.55 0.22 275 / 0.7)); opacity: 0.85; }
+  100% { filter: drop-shadow(0 0 0 transparent); opacity: 1; }
+}
+.logo-armed {
+  animation: logo-armed-pulse 0.9s ease-out;
+}
+
+/* ELISS-Heavy unlock — pixie-dust sparkle burst. A decorative overlay anchored
+   to the logo centre; each grain receives randomised --tx/--ty/--sz/--sc/--rot/
+   --dur/--delay/--c custom props from AppShell's HeavySparkles. Mounted only
+   while `heavyArmed` is true (a single ~1.2s window), pointer-events:none and
+   aria-hidden so it never affects layout, hit-testing or the a11y tree. */
+.heavy-sparkles {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.heavy-sparkles .sparkle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--sz, 8px);
+  height: var(--sz, 8px);
+  margin-left: calc(var(--sz, 8px) / -2);
+  margin-top: calc(var(--sz, 8px) / -2);
+  background: radial-gradient(circle, #fff 0 18%, var(--c, #a78bfa) 30%, transparent 62%);
+  /* 4-point star */
+  clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%);
+  filter: drop-shadow(0 0 5px var(--c, #a78bfa));
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: pixie var(--dur, 1s) ease-out forwards;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes pixie {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.2) rotate(0deg); }
+  18% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(var(--sc, 1)) rotate(var(--rot, 180deg)); }
+}
+
+/* ---------- Dialog "fly to pill" minimize / restore ----------
+   Opt-in via the shared DialogContent `flyTarget` prop (ui/dialog.tsx). Used by
+   the Dossier-activity popup ("Run in background") and the reset-password dialog
+   so they visually MINIMIZE INTO the top-right pill / account menu instead of the
+   default centre zoom that drifted top-left (away from those triggers). JS in
+   DialogContent sets --fly-x/--fly-y (px offset from the dialog's resting centre
+   to the target's centre) and --fly-s (target/dialog width ratio) on the content
+   element; the keyframes animate the centred dialog to/from that point. The
+   transform keeps the centring translate(-50%,-50%) and origin stays centred, so
+   the centre-to-centre offset lands the shrunk dialog precisely on the target.
+   The global prefers-reduced-motion rule above collapses these to an instant cut. */
+.dialog-fly[data-state="open"] {
+  animation: dialog-fly-in 0.3s cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+.dialog-fly[data-state="closed"] {
+  animation: dialog-fly-out 0.4s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+/* NOTE: the keyframe `transform` does NOT include the centring translate(-50%,
+   -50%). Tailwind v4 emits the dialog's `translate-x/y-[-50%]` as the separate
+   CSS `translate` PROPERTY (not `transform`), which is always applied and keeps
+   the dialog centred at rest AND during the animation. Re-adding it here would
+   double-centre and throw the flight path ~half the dialog width off course. We
+   only animate the FLIP offset + scale; transform-origin stays centred so the
+   shrunk dialog lands exactly on the target. */
+@keyframes dialog-fly-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--fly-x, 0), var(--fly-y, 0)) scale(var(--fly-s, 0.05));
+  }
+  55% { opacity: 1; }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+@keyframes dialog-fly-out {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  30% { opacity: 1; }
+  to {
+    opacity: 0;
+    transform: translate(var(--fly-x, 0), var(--fly-y, 0)) scale(var(--fly-s, 0.05));
+  }
+}
+
 @keyframes feature-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -403,11 +564,18 @@ html {
   .brand-breathe,
   .feature-stagger .feature-item,
   .login-card-rise,
-  .login-badge-glow {
+  .login-badge-glow,
+  .logo-spin,
+  .logo-armed {
     transition: none !important;
     transform: none !important;
     opacity: 1 !important;
     animation: none !important;
+  }
+  /* The pixie-dust burst is purely motion; suppress it entirely rather than
+     freezing the grains visible (the shared rule above forces opacity:1). */
+  .heavy-sparkles {
+    display: none !important;
   }
 }
 
@@ -467,4 +635,25 @@ html {
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
   .pl-safe { padding-left: env(safe-area-inset-left); }
   .pr-safe { padding-right: env(safe-area-inset-right); }
+}
+
+/* MobileNavSheet self-managed background zoom. Mirrors vaul's open/close motion
+   (0.5s cubic-bezier(.32,.72,0,1)) but is defined entirely here with NO
+   env(safe-area-inset-*) term, so dragging the sheet in a standalone PWA does
+   not shift the background (vaul's shouldScaleBackground is disabled). The
+   transform is applied only while open (transient), so it adds no permanent
+   containing block; the dossier-activity popup and reset dialog render outside
+   this wrapper and are unaffected. */
+[data-vaul-drawer-wrapper] {
+  transform-origin: top center;
+  transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+              border-radius 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+}
+[data-nav-sheet-open] [data-vaul-drawer-wrapper] {
+  transform: scale(0.93) translate3d(0, 14px, 0);
+  border-radius: 12px;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-vaul-drawer-wrapper] { transition: none; }
 }

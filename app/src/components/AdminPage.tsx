@@ -5,7 +5,8 @@ import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ShieldCheck, ShieldOff, Trash2, RefreshCw, Users } from "lucide-react";
+import { ShieldCheck, ShieldOff, Trash2, RefreshCw, Users } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { CreateUserDialog } from "./CreateUserDialog";
 import { safeDate } from "@/lib/utils";
 
@@ -150,7 +151,7 @@ export function AdminPage() {
               {loading && users.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin inline" />
+                    <Spinner className="h-5 w-5 inline" />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
@@ -215,7 +216,7 @@ export function AdminPage() {
                             className="w-28 justify-center"
                           >
                             {busyId === u.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Spinner className="h-4 w-4" />
                             ) : u.is_admin ? (
                               <>
                                 <ShieldOff className="h-4 w-4 mr-1" /> Revoke
@@ -252,7 +253,7 @@ export function AdminPage() {
       <div className="md:hidden space-y-3">
         {loading && users.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin inline" />
+            <Spinner className="h-5 w-5 inline" />
           </Card>
         ) : users.length === 0 ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">No users found.</Card>
@@ -308,7 +309,7 @@ export function AdminPage() {
                     onClick={() => void onToggleAdmin(u)}
                   >
                     {busyId === u.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Spinner className="h-4 w-4" />
                     ) : u.is_admin ? (
                       <><ShieldOff className="h-4 w-4 mr-1" /> Revoke</>
                     ) : (

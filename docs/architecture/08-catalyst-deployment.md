@@ -25,7 +25,7 @@ Three rules that matter:
 
 1. **`functions.targets`** lists what `catalyst deploy --only functions` ships. If you add a new function, add its directory name here — otherwise the deploy "succeeds" without your function. See the top-five gotcha in the `zoho-catalyst` skill.
 2. **`client.source` points at the build output**, not the source tree. Pointing at `app/` directly would include `node_modules/` and fail with `ZIPSANITIZER_FILES_COUNT_EXCEEDED`. There is no `.catalystignore` mechanism.
-3. **`envId`** is the development environment by default. Use `--org <envId>` on the CLI to deploy to production (`50042142947`).
+3. **`envId` is the Development environment, and the CLI only ever deploys to Development.** The `--org` flag is the **Org ID** (always `60066539659` here), **not** an environment selector — passing the prod env id to it does *not* target production. Promotion to Production is a separate, console-only flow (see §"Promote to production" below).
 
 ## Functions
 
@@ -98,15 +98,28 @@ The `--only functions:<name>` form targets exactly one function. This is the rec
 
 ### Promote to production
 
-```powershell
-catalyst deploy `
-  -p 31210000000133001 `
-  --org 50042142947 `
-  --dc in `
-  < NUL
-```
+> ⚠️ **There is no CLI path to Production.** `catalyst deploy` (with any `--org` value) only ever deploys to **Development**. Promotion is done **exclusively** through the Catalyst console deployment wizard. A previous version of this doc claimed `catalyst deploy --org 50042142947` promotes to prod — that is wrong; ignore any such command.
 
-Only the `--org` value changes. Build the client once; the same `app/dist/` ships to both environments. **Pre-flight checks before promoting**: read `04-deployment-runbook.md` in the maintenance section.
+Production promotion is a **console migration**: it clones **schema + config + function code** from Dev to Prod, but **not row data** and **not Stratus objects** (prod tables come up empty — that's expected). Resource IDs are preserved across environments.
+
+**Click path:** Console → open `lead-insight-hub` → **Settings → Environments → Deployments → Create Deployment**. A 3-step wizard:
+
+1. **Select Features** — service-level checkboxes only (Serverless / Job Scheduling / CloudScale / Settings); the "19/19" counts are informational, not per-component pickers. It is **all-or-nothing per service**. Web Client Hosting lives under **CloudScale**, so any web-client update pulls in CloudScale. Set a **commit message (≤40 chars)**.
+2. **Diff Generation** — takes seconds to ~11 min. Poll `GET /baas/v1/project/<projId>/migrate/<deployId>` for `migration_status` (`Diff_Completed`), then hard-reload to render the diff + the "Initiate Deployment" button. Verify Datastore/NoSQL/Stratus show **Total Changes: 0** before initiating; benign symmetric `Table_Scopes`/`Table_Permissions` re-staging is normal.
+3. **Initiate Deployment** → "Yes, Proceed" → poll to `Completed`.
+
+**Gotchas:**
+- A deployment stuck at `Diff_Completed` **blocks** new ones — open it and **Abort** first.
+- If CloudScale/Authentication is in the diff **and** a Zoho social login exists in Dev, the wizard demands a Zoho OAuth Client ID + Secret (a hard gate). The project keeps that gate clear by **deleting the Dev Zoho social login** (Authentication → Authentication Type → "Zoho" → kebab → Delete) — re-addable later.
+- Function **env vars are per-environment** and are **not** carried by the migration. They must be set as **Production-scoped** console values per function. Set them via the console UI (scripted automation of that form is unreliable). Job functions cold-start per run (pick up env automatically); the warm `api` function needs a fresh instance (bump a `BUILD_ID` constant → CLI-deploy to Dev → re-run the migration) for changed prod env to take effect.
+
+**Pre-flight checks before promoting**: read [`../maintenance/04-deployment-runbook.md`](../maintenance/04-deployment-runbook.md). Full details and the verified prod IDs are in the memory rule `reference_catalyst_dev_to_prod_promotion`.
+
+#### Deployment history (most recent first)
+
+| Date | Deploy ID | Commit | Contents |
+| --- | --- | --- | --- |
+| 2026-06-13 | `31210000000235055` | Deploy Dev to Prod 0613 softtol+UX | 3 functions + web client updated; `app_settings` table + 3 `dossier_requests` checkpoint columns added. Tier-aware soft tolerance, source backfill, zero-sources lint, dialog animations. Fully additive, no gate. |
 
 ## Env vars and the `catalyst-config.json` trap
 

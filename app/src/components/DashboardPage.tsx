@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@/lib/use-server-fn";
 import { getDashboardStats, listLeads } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useDossierActivity } from "@/lib/dossier-activity";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -312,6 +313,7 @@ export function DashboardPage() {
   const { isAdmin } = useAuth();
   const statsFn = useServerFn(getDashboardStats);
   const leadsFn = useServerFn(listLeads);
+  const { leadsVersion } = useDossierActivity();
   const [data, setData] = useState<{ leads: StatsLead[]; signals: StatsSignal[] } | null>(null);
   const [hotLeads, setHotLeads] = useState<HotLead[]>([]);
   // Independent loading flags. Previously a single `loading` flag waited
@@ -334,7 +336,7 @@ export function DashboardPage() {
         setHotLeads((result?.leads ?? []).slice(0, 6));
       })
       .finally(() => setHotLoading(false));
-  }, [statsFn, leadsFn]);
+  }, [statsFn, leadsFn, leadsVersion]);
 
   const stats = useMemo(() => {
     const leads = data?.leads ?? [];

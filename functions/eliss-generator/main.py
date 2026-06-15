@@ -280,6 +280,78 @@ def _render(dossier_dict, request_id, render_timeout=120):
 #  Pipeline
 # ────────────────────────────────────────────────────────────────────────────
 
+def _get_resume_attempts(app, request_id):
+    """Current resume_attempts for a row (0 when null/missing). Best-effort."""
+    try:
+        zcql = app.zcql()
+        row = select_one(
+            zcql,
+            f"SELECT resume_attempts FROM dossier_requests WHERE ROWID = {int(request_id)}",
+            "dossier_requests",
+        )
+        v = (row or {}).get("resume_attempts")
+        return int(v) if v not in (None, "") else 0
+    except Exception:
+        return 0
+
+
+def _dispatch_resume(app, request_id, settings, reason):
+    """Self-dispatch a fresh Job to finish this request from its checkpoint.
+
+    Parity with the Heavy generator. Light's one expensive asset (the synthesis
+    call) is already on Stratus (checkpoint_ready) by the time this is called, so
+    a resume re-renders from the checkpoint without re-spending a Claude call.
+    Returns True if a resume Job was submitted. On the attempts cap the row is
+    failed. If the jobpool env var is missing or the SDK submit fails, the row is
+    LEFT running so the Node stale-sweep (cron / api) recovers it (belt+suspenders).
+    """
+    resume_max = get_int(settings, "light_resume_max_attempts", 4)
+    attempts = _get_resume_attempts(app, request_id)
+    if attempts >= resume_max:
+        _patch_request(app, request_id, status="failed", stage="error",
+                       error_message=f"resume attempts exhausted ({attempts}/{resume_max}) after {reason}")
+        LOG.error("resume cap hit for request_id=%s (%d/%d)", request_id, attempts, resume_max)
+        return False
+
+    jobpool = os.environ.get("ELISS_GEN_JOBPOOL_ID")
+    if not jobpool:
+        LOG.error("ELISS_GEN_JOBPOOL_ID not set — leaving row running for Node sweep recovery")
+        return False
+
+    try:
+        # Python SDK: `job` is a @property (NOT a method like Node's .job()) —
+        # call submit_job on it directly. jobpool_id goes in the payload.
+        short_name = f"er_{str(request_id)[-12:]}"[:20]
+        app.job_scheduling().job.submit_job({
+            "jobpool_id": jobpool,
+            "job_name": short_name,
+            "target_type": "Function",
+            "target_name": RESUME_TARGET,
+            # request_id stays a STRING — bigint ROWID precision (see memory).
+            "params": {
+                "request_id": str(request_id),
+                "resume": "1",
+                "resume_reason": str(reason),
+            },
+        })
+    except Exception as e:
+        # A Job Function's app may lack scope to submit a job — that's fine; the
+        # Node stale-sweep (admin-scoped api / cron) recovers it. Surface the
+        # reason on the row for observability without failing it.
+        LOG.exception("resume self-dispatch failed (Node sweep will recover): %s", e)
+        try:
+            _patch_request(app, request_id,
+                           error_message=f"self-dispatch failed ({reason}), awaiting sweep: {str(e)[:300]}")
+        except Exception:
+            pass
+        return False
+
+    _patch_request(app, request_id, resume_attempts=attempts + 1, stage="resuming")
+    LOG.info("dispatched resume job for request_id=%s (attempt %d/%d, reason=%s)",
+             request_id, attempts + 1, resume_max, reason)
+    return True
+
+
 def _run_pipeline(app, request_id):
     # Global super-admin generation settings (empty dict => hardcoded defaults
     # stand; each lookup below falls back to the original constant).
@@ -289,6 +361,12 @@ def _run_pipeline(app, request_id):
     rr_timeout = get_int(settings, "rocketreach_timeout_s", 20)
     rr_profiles = get_int(settings, "rr_max_bulk_profiles_light", 10)
     lint_retry_max = get_int(settings, "light_lint_retry_max", 1)
+    # Self-dispatch deadline (parity with Heavy): if synthesis eats most of the
+    # 900s Job budget, defer the kill-prone render tail to a fresh resume Job.
+    # Conservative default (720s) so normal fast runs NEVER defer — only
+    # genuinely slow synthesis trips it. job_start anchors the elapsed check.
+    render_deadline_s = get_int(settings, "light_render_deadline_s", 720)
+    job_start = time.monotonic()
     if settings:
         LOG.info("loaded global generation settings: %s keys", len(settings))
 
@@ -439,6 +517,21 @@ def _run_pipeline(app, request_id):
                        rr_calls=rr_call_count,
                        checkpoint_ready=True, resume_target=RESUME_TARGET)
         LOG.info("dossier checkpoint written; tokens=%s/%s", tokens_in, tokens_out)
+
+        # ── TIME-BUDGET GUARD ────────────────────────────────────────────────
+        # Checkpoint is durable. If synthesis ate most of the Job budget, hand
+        # the render tail to a fresh resume Job (loads the checkpoint, re-renders,
+        # zero re-spent tokens) rather than risk a 900s kill mid-render. Only
+        # reachable when auto_resume is on (we're inside that block) AND past the
+        # deadline, so fast runs are byte-identical to before. A failed dispatch
+        # falls through to in-job render, with the cron/api sweep as backstop.
+        elapsed = time.monotonic() - job_start
+        if elapsed > render_deadline_s:
+            LOG.warning("synthesis took %.0fs (> deadline %ds) — deferring render to a resume job",
+                        elapsed, render_deadline_s)
+            if _dispatch_resume(app, request_id, settings, reason="render_deadline"):
+                return
+            LOG.error("deferral dispatch failed for request_id=%s; rendering in-job", request_id)
 
     # Lint retry re-runs the full synthesis (Light has no cheaper path); only
     # the in-job pipeline does this — a resume never re-synthesizes.

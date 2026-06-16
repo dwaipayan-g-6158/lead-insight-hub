@@ -12,7 +12,7 @@ The project manifest. Source-of-truth for what gets deployed.
   "projectId": "31210000000133001",
   "envId": "60066539659",
   "functions": {
-    "targets": ["api", "eliss-generator", "eliss-heavy-generator"],
+    "targets": ["api", "eliss-generator", "eliss-heavy-generator", "dossier-sweeper"],
     "source": "functions"
   },
   "client": {
@@ -29,13 +29,16 @@ Three rules that matter:
 
 ## Functions
 
-Three function directories under `functions/`:
+Four function directories under `functions/`:
 
 | Function | Type | Runtime | Memory | Timeout |
 | --- | --- | --- | --- | --- |
 | `api` | Advanced I/O | Node 18 | (Catalyst default — 128 MB unless tuned in console) | 30 s default |
 | `eliss-generator` | Job | Python 3.9 | **512 MB** (per `catalyst-config.example.json`) | 900 s |
 | `eliss-heavy-generator` | Job | Python 3.9 | **3072 MB** | 900 s |
+| `dossier-sweeper` | Job (cron-driven) | Node 18 | **256 MB** | — |
+
+`dossier-sweeper` is triggered by the `dossier_sweeper_cron` pre-defined cron (every 5 min) — it has no API Gateway route. It reads one env var, `ELISS_GEN_JOBPOOL_ID`, which must be set **Production-scoped** in the console after a migration (see §"Promote to production").
 
 The Job functions execute in the `elissgenpool` Job Pool (memory: 1536 MB at the pool level). The pool's memory caps individual function memory at runtime — the per-function `memory` field in `catalyst-config.json` is the request; the pool ceiling enforces the actual allocation.
 
@@ -119,6 +122,7 @@ Production promotion is a **console migration**: it clones **schema + config + f
 
 | Date | Deploy ID | Commit | Contents |
 | --- | --- | --- | --- |
+| 2026-06-17 | `31210000000260040` | Deploy Dev to Prod 0617 sweeper+resume | **4 entities, no schema/data change, no gate.** Added `dossier-sweeper` Job function + `dossier_sweeper_cron` (every 5 min); updated `eliss-generator` (Light self-dispatch resume parity with Heavy); refreshed web client (iOS PWA login-zoom fix `v=35`, mobile bottom-sheet nav, EngineBadge, dialog FLIP). `api` + `eliss-heavy-generator` unchanged. Post-deploy: set `dossier-sweeper` Production-scoped `ELISS_GEN_JOBPOOL_ID=31210000000151372`; cron verified enabled. |
 | 2026-06-13 | `31210000000235055` | Deploy Dev to Prod 0613 softtol+UX | 3 functions + web client updated; `app_settings` table + 3 `dossier_requests` checkpoint columns added. Tier-aware soft tolerance, source backfill, zero-sources lint, dialog animations. Fully additive, no gate. |
 
 ## Env vars and the `catalyst-config.json` trap

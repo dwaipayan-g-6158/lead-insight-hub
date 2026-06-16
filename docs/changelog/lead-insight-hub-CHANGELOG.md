@@ -10,7 +10,24 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-13 is promoted; see [1.1.0])_
+- _(none — all development work through 2026-06-17 is promoted; see [1.2.0])_
+
+---
+
+## [1.2.0] — 2026-06-17
+
+Development work promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000260040`, Development → Production, fully additive — **4 entities**: 1 function added, 1 function updated, 1 cron added, web client updated; **zero schema/data changes, no auth gate**, `api` and `eliss-heavy-generator` untouched). See [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md) §"Deployment history".
+
+### Added
+
+- **`dossier-sweeper`** — a new always-on, engine-agnostic Catalyst **Job Function** (Node 18, 256 MB) driven by the **`dossier_sweeper_cron`** pre-defined cron (every 5 min). It is the global twin of the user-scoped inline `sweepStaleRunning()` in `functions/api/routes/dossiers.js`: it scans **all** users' `dossier_requests` for rows stuck `pending`/`running` past the 15-min staleness window and either resumes them from their Stratus checkpoint (when `checkpoint_ready` + a `resume_target` + attempts remain) or marks them `failed`. Guarantees recovery even when the request owner never re-opens the app (e.g. a mobile request backgrounded after an OOM in the render tail). Reads `ELISS_GEN_JOBPOOL_ID` — set **Production-scoped** in the console post-migration (the migration ships code only, not runtime env). Added to `catalyst.json` `functions.targets`.
+
+### Changed
+
+- **Light generator self-dispatch resume parity with Heavy** (`functions/eliss-generator/main.py`). Light previously had no proactive self-dispatch and relied entirely on an external sweep to recover after a kill. Added `_get_resume_attempts` + `_dispatch_resume` (ported from Heavy) and a post-checkpoint time-budget guard: if synthesis exceeds `light_render_deadline_s` (default 720s of the 900s Job budget), the kill-prone render tail is deferred to a fresh resume Job that re-renders from the Stratus checkpoint (zero re-spent tokens). Guarded by `auto_resume` + the deadline, so fast runs are unchanged.
+- **Web client refresh (1.0.0 rebuild).** iOS PWA login-zoom fix (`login-iframe.css` cache-bust `v=35`; inputs 14px→16px + `text-size-adjust`), mobile bottom-sheet navigation (`MobileNavSheet`), mobile dossier status pill, `EngineBadge` (Heavy/Light/Imported indicator), `AppShell` rewrite, and dialog FLIP animations.
+
+> The Heavy sharded-synthesis pipeline, the `api` generation-settings endpoints, and all DataStore schema were already in Production prior to this release (promoted in [1.1.0] / earlier); the Dev→Prod diff confirmed `api` and `eliss-heavy-generator` as unchanged.
 
 ---
 

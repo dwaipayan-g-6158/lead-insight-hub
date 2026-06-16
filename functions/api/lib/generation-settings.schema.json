@@ -397,6 +397,20 @@
       "tradeoff": "Higher rides out a longer API-degradation window (retries are spaced ~15 min apart and re-spend zero research tokens); too high risks burning parent-synthesis tokens repeatedly on a genuinely broken request.",
       "recommendedNote": "4 — one fast deferral plus three sweep-spaced retries cover a ~45-min slow spell while still terminating a truly broken request."
     },
+    "sweep_resume_max_age_min": {
+      "type": "int",
+      "default": 180,
+      "min": 15,
+      "max": 1440,
+      "recommended": 180,
+      "unit": "minutes",
+      "engine": "shared",
+      "group": "operational",
+      "label": "Max age for stale-sweep resume",
+      "help": "Oldest a request (by creation time) may be and still be auto-resumed by the stale-sweep (both the global cron and the per-user inline sweep). A stalled request older than this is marked failed (cleanup) instead of being resumed, so an abandoned dossier is never silently regenerated long after the owner walked away.",
+      "tradeoff": "Lower stops resurrecting old abandoned requests sooner (no surprise regeneration, no wasted Anthropic/RR credits) but could cut off a genuinely long-delayed recovery. Higher keeps the recovery window open longer at the risk of reviving requests nobody is waiting on. The resume-max-attempts caps still apply on top of this.",
+      "recommendedNote": "180 (3h) — comfortably covers an in-flight death plus ~15-min sweep spacing and a few retries, while never reviving a day-old abandoned request."
+    },
     "heavy_resume_parent_degraded": {
       "type": "bool",
       "default": true,

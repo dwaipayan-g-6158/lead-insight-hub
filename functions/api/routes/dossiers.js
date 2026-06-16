@@ -116,7 +116,7 @@ async function sweepStaleRunning(app, userId) {
   // a row that's fresh enough, everything after it is fresher → break.
   const rows = await selectAll(
     zcql,
-    `SELECT ROWID, MODIFIEDTIME, checkpoint_ready, resume_attempts, resume_target ` +
+    `SELECT ROWID, CREATEDTIME, MODIFIEDTIME, checkpoint_ready, resume_attempts, resume_target ` +
       `FROM dossier_requests ` +
       `WHERE user_id = '${esc(userId)}' AND status IN ('pending', 'running') ` +
       `ORDER BY MODIFIEDTIME ASC`,
@@ -129,6 +129,12 @@ async function sweepStaleRunning(app, userId) {
   const lightResume = settings.light_auto_resume_enabled !== false; // default on
   const heavyMax = Number(settings.heavy_resume_max_attempts ?? 4);
   const lightMax = Number(settings.light_resume_max_attempts ?? 4);
+  // Age guard — see dossier-sweeper/index.js: a stale row created longer ago
+  // than this is abandoned, so clean it up rather than silently regenerating
+  // it. Default 3h; tunable via app_settings.sweep_resume_max_age_min. KEEP
+  // IN SYNC with the cron sweeper.
+  const maxAgeMin = Number(settings.sweep_resume_max_age_min ?? 180);
+  const RESUME_MAX_AGE_MS = maxAgeMin * 60 * 1000;
   const jobpoolId = process.env.ELISS_GEN_JOBPOOL_ID;
 
   const now = Date.now();
@@ -143,9 +149,13 @@ async function sweepStaleRunning(app, userId) {
     const isHeavy = target === "eliss-heavy-generator";
     const resumeEnabled = isHeavy ? heavyResume : lightResume;
     const maxAttempts = isHeavy ? heavyMax : lightMax;
+    const createdMs = parseCatalystTimestamp(r.CREATEDTIME);
+    // Too old to resume (or unparseable creation time → fail closed): clean up
+    // an abandoned request instead of regenerating it.
+    const tooOldToResume = createdMs == null || now - createdMs > RESUME_MAX_AGE_MS;
 
     // Self-heal: resume from checkpoint rather than failing.
-    if (jobpoolId && truthy(r.checkpoint_ready) && target && resumeEnabled && attempts < maxAttempts) {
+    if (jobpoolId && !tooOldToResume && truthy(r.checkpoint_ready) && target && resumeEnabled && attempts < maxAttempts) {
       try {
         const shortName = `er_${String(r.ROWID).slice(-12)}`.slice(0, 20);
         await app.jobScheduling().job().submitJob({
@@ -171,14 +181,17 @@ async function sweepStaleRunning(app, userId) {
       }
     }
 
-    // Default: mark failed.
+    // Default: mark failed (too old to resume, no checkpoint, attempts
+    // exhausted, or resume disabled).
     try {
+      const failMsg = tooOldToResume
+        ? `Job abandoned — not resumed (no progress and created over ${Math.round(RESUME_MAX_AGE_MS / 60000)} min ago)`
+        : `Job stalled — no progress in ${Math.round(STALE_AFTER_MS / 60000)} min`;
       await datastore.table("dossier_requests").updateRow({
         ROWID: r.ROWID,
         status: "failed",
         stage: "error",
-        error_message:
-          `Job stalled — no progress in ${Math.round(STALE_AFTER_MS / 60000)} min`,
+        error_message: failMsg,
         completed_at: catalystDateTime(new Date()),
       });
       swept++;

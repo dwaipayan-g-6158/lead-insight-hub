@@ -122,6 +122,7 @@ Production promotion is a **console migration**: it clones **schema + config + f
 
 | Date | Deploy ID | Commit | Contents |
 | --- | --- | --- | --- |
+| 2026-06-17 | `31210000000260051` | Prod 0617 sweeper age-guard fix | **Patch.** `api` + `dossier-sweeper` updated, `dossier_sweeper_cron` re-enabled. Adds a `CREATEDTIME` age guard so the stale-sweep (cron + inline) marks abandoned dossiers `failed` instead of resuming them — fixes the `1.2.0` cron resurrecting a 4-day-old Heavy dossier. New `sweep_resume_max_age_min` setting (default 180 min). No schema/data change, no gate. |
 | 2026-06-17 | `31210000000260040` | Deploy Dev to Prod 0617 sweeper+resume | **4 entities, no schema/data change, no gate.** Added `dossier-sweeper` Job function + `dossier_sweeper_cron` (every 5 min); updated `eliss-generator` (Light self-dispatch resume parity with Heavy); refreshed web client (iOS PWA login-zoom fix `v=35`, mobile bottom-sheet nav, EngineBadge, dialog FLIP). `api` + `eliss-heavy-generator` unchanged. Post-deploy: set `dossier-sweeper` Production-scoped `ELISS_GEN_JOBPOOL_ID=31210000000151372`; cron verified enabled. |
 | 2026-06-13 | `31210000000235055` | Deploy Dev to Prod 0613 softtol+UX | 3 functions + web client updated; `app_settings` table + 3 `dossier_requests` checkpoint columns added. Tier-aware soft tolerance, source backfill, zero-sources lint, dialog animations. Fully additive, no gate. |
 

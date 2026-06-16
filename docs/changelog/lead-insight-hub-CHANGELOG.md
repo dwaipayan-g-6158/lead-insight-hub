@@ -10,7 +10,23 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-17 is promoted; see [1.2.0])_
+- _(none — all development work through 2026-06-17 is promoted; see [1.2.1])_
+
+---
+
+## [1.2.1] — 2026-06-17
+
+Patch promoted to Production via the Catalyst console wizard (deploy `31210000000260051`, Development → Production — `api` + `dossier-sweeper` functions updated, `dossier_sweeper_cron` re-enabled; no schema/data change, no auth gate).
+
+### Fixed
+
+- **Stale-sweep no longer resurrects abandoned dossiers.** Both the global `dossier_sweeper_cron` and the per-user inline `sweepStaleRunning()` (`functions/api/routes/dossiers.js`) resumed **any** stale `running`/`pending` row that had a checkpoint, regardless of how old it was — so right after `1.2.0` enabled the global cron in prod, it auto-resumed a 4-day-old abandoned Heavy dossier (re-spending Anthropic/RocketReach credits nobody requested). Added a **`CREATEDTIME`-based age guard**: a stale row created longer ago than `sweep_resume_max_age_min` (new setting, default **180 min**) is marked `failed` (cleanup) instead of resumed. Fail-closed on an unparseable/missing creation time. The two sweeps are kept in sync.
+
+### Added
+
+- **`sweep_resume_max_age_min`** generation setting (shared / operational, default 180, range 15–1440) in `functions/api/lib/generation-settings.schema.json`, so the super-admin panel can tune the resume age window without a redeploy.
+
+> Operational note: between `1.2.0` and this patch the prod `dossier_sweeper_cron` was temporarily disabled to stop the resurrection behavior; this deploy re-enabled it now that the guard is in place.
 
 ---
 

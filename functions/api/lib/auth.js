@@ -120,4 +120,15 @@ async function requireSuperAdmin(req, res, next) {
   next();
 }
 
-module.exports = { attachCatalyst, requireUser, loadRole, requireAdmin, requireSuperAdmin };
+// Admin OR super-admin. Used by the Audit Report routes — every user GENERATES
+// audit events, but viewing the org-wide log is restricted to admins and the
+// super-admin (the super-admin is gated by email and may not carry role=admin,
+// so we check both flags).
+async function requireAdminOrSuperAdmin(req, res, next) {
+  if (!req.isAdmin && !req.isSuperAdmin) {
+    return res.status(403).json({ error: "admin role required" });
+  }
+  next();
+}
+
+module.exports = { attachCatalyst, requireUser, loadRole, requireAdmin, requireSuperAdmin, requireAdminOrSuperAdmin };

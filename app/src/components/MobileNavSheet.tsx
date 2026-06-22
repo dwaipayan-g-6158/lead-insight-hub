@@ -19,6 +19,7 @@ import {
   KeyRound,
   LogOut,
   Menu,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +64,9 @@ export function MobileNavSheet({
   const navItems: { to: string; label: string; Icon: LucideIcon }[] = [
     { to: "/", label: "Dashboard", Icon: LayoutDashboard },
     { to: "/leads", label: "Leads", Icon: FileSearch },
+    ...(isAdmin || isSuperAdmin
+      ? [{ to: "/audit", label: "Audit", Icon: ScrollText }]
+      : []),
     {
       to: "/upload",
       label: isAdmin ? "Upload" : "Create",

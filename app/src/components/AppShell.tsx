@@ -27,6 +27,7 @@ import {
   ChevronDown,
   KeyRound,
   SlidersHorizontal,
+  ScrollText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ActiveRequestsPill } from "@/components/ActiveRequestsPill";
@@ -237,6 +238,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <nav aria-label="Main" className="hidden md:flex items-center gap-1">
             {navItem("/", "Dashboard", LayoutDashboard)}
             {navItem("/leads", "Leads", FileSearch)}
+            {(isAdmin || isSuperAdmin) && navItem("/audit", "Audit", ScrollText)}
             {navItem("/upload", isAdmin ? "Upload" : "Create", isAdmin ? Upload : Sparkles)}
             {isAdmin && navItem("/admin", "Admin", Shield)}
             {isSuperAdmin && navItem("/settings", "Settings", SlidersHorizontal)}

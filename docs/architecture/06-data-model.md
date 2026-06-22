@@ -11,6 +11,11 @@ Four Catalyst Data Store tables drive the entire application. All four live in t
 | `user_roles` | `31210000000143001` | App-level role per Catalyst user. | `loadRole` middleware (auto-creates a row on first authenticated request). |
 | `dossier_requests` | `31210000000151002` | Job-status state machine for in-flight dossier generation. | `routes/dossiers.js` on POST `/dossiers/generate`. |
 | `app_settings` | `31210000000227021` | Single GLOBAL-scope row holding the super-admin generation settings as JSON. | `routes/settings.js` on PUT `/admin/settings` (super-admin only). |
+| `audit_events` | `31210000000254188` | Append-only org-wide activity log (logins, dossier creation, searches, admin actions). | `functions/api/lib/audit.js` `logEvent()`, called fire-and-forget from `me.js` / `dossiers.js` / `leads.js` / `admin.js`. |
+
+## `audit_events` (org-wide activity log)
+
+GLOBAL-scope, append-only. Written **only** by `lib/audit.js logEvent()` (fire-and-forget, non-throwing — an audit-write failure must never break the user action). Every authenticated user GENERATES events, but **reading the log is restricted to admins + the super-admin** — `routes/audit.js` (`GET /audit` feed + `GET /audit/summary`) is mounted behind `requireAdminOrSuperAdmin`; there is no client mutate/delete path. Columns: `user_id` (varchar, indexed — actor), `actor_email`, `actor_name` (denormalized for display), `event_type` (varchar, indexed: `login` | `dossier_create` | `search` | `admin_action`), `event_action` (sub-action / engine), `target_type`, `target_id` (bigint ROWID **as string** — precision rule), `target_label` (human label / search query), `metadata` (text JSON ≤10000), `occurred_at` (datetime, indexed). **`occurred_at` is written in UTC** via `db.catalystDateTime()` — distinct from the system `CREATEDTIME`/`MODIFIEDTIME` which are project-local IST (+05:30); the 120-day retention sweep keys off `occurred_at` in UTC so there is no offset drift. Retention: `functions/dossier-sweeper/index.js` `sweepAuditRetention()` hard-deletes rows where `occurred_at < now − 120d` on every cron sweep (idempotent; usually 0 rows). `dossier_create` rows are NOT updated per status transition — the read API live-enriches them with the current `dossier_requests` status/stage at display time.
 
 ## `app_settings` (singleton)
 

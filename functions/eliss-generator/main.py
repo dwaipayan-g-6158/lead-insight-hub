@@ -102,6 +102,17 @@ def handler(job_request, context):
         context.close_with_success()
     except _BlockingError as e:
         LOG.error("pipeline blocked for request_id=%s: %s", request_id, e)
+        # Crash-safe terminal write. Most inner stages patch status=failed before
+        # raising _BlockingError, but _render does NOT — so a renderer crash
+        # (non-zero exit / no output) would strand the row at status=running
+        # forever. Patch failed here unconditionally (idempotent) so the row
+        # ALWAYS reaches a terminal state, and str(e) (which carries the
+        # generate_report.py stderr tail) lands in error_message for diagnosis.
+        try:
+            _patch_request(app, request_id, status="failed", stage="error",
+                           error_message=str(e)[:9999])
+        except Exception:
+            pass
         context.close_with_failure()
     except Exception as e:
         LOG.exception("unexpected error in pipeline for request_id=%s", request_id)
@@ -150,7 +161,7 @@ def _load_request(app, request_id):
     return {
         "user_id": row.get("user_id"),
         "intake": {
-            "name": row.get("intake_name"),
+            "name": _sanitize_name(row.get("intake_name")),
             "email": row.get("intake_email"),
             "linkedin_url": row.get("intake_linkedin_url"),
             "company_url": row.get("intake_company_url"),
@@ -162,6 +173,22 @@ def _load_request(app, request_id):
 # ────────────────────────────────────────────────────────────────────────────
 #  Intake helpers
 # ────────────────────────────────────────────────────────────────────────────
+
+def _sanitize_name(s):
+    """Neutralize the lead name before it flows into synthesis, rendering, and
+    storage. Real names never contain markup; an adversarial name such as
+    '<img src=x onerror=...>' is both an injection vector and a renderer-
+    robustness risk (the render subprocess processes this string). Strip HTML
+    tags, drop residual angle brackets and control chars, collapse whitespace,
+    and clamp length. Returns None if nothing usable remains."""
+    if not s:
+        return s
+    t = re.sub(r"<[^>]*>", "", str(s))        # drop any HTML tags
+    t = t.replace("<", " ").replace(">", " ")  # drop residual stray brackets
+    t = re.sub(r"[\x00-\x1f\x7f]", " ", t)     # drop control chars
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:120] or None
+
 
 def _derive_domain(intake):
     """Email > company_url > linkedin (no path). Mirrors skill STEP 1."""

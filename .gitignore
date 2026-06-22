@@ -11,3 +11,4 @@ Thumbs.db
 
 # Local dev artifacts kept on disk but out of git
 .archive/
+audit-screenshots/

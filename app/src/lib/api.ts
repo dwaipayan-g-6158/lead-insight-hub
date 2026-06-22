@@ -205,6 +205,16 @@ export async function getMyProfile() {
   }>(`/me`);
 }
 
+// Login beacon for the Audit Report. Fired once per browser session from
+// auth.tsx (sessionStorage-guarded) right after auth resolves. Best-effort —
+// the server always 200s and the audit write is fire-and-forget.
+export async function postSessionStart() {
+  return call<{ ok: boolean }>(`/me/session-start`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export async function postSignupBootstrap() {
   return call<{ role: "admin" | "user"; alreadySet: boolean }>(`/auth/post-signup`, {
     method: "POST",
@@ -287,6 +297,29 @@ export async function adminCreateUser({
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+// ---------- audit report ----------
+
+import type { AuditFeedResponse, AuditSummary } from "@/types/audit";
+
+export type AuditFeedInput = {
+  event_type?: string; // comma-separated list of AuditEventType
+  q?: string; // free-text over actor + label + action
+  user?: string; // user_id filter
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
+  limit?: number;
+  offset?: number;
+};
+
+export async function getAuditLog({ data }: { data?: AuditFeedInput } = {}) {
+  const qs = toQueryString((data || {}) as Record<string, unknown>);
+  return call<AuditFeedResponse>(`/audit${qs}`);
+}
+
+export async function getAuditSummary() {
+  return call<AuditSummary>(`/audit/summary`);
 }
 
 // ---------- super-admin generation settings ----------

@@ -1,6 +1,7 @@
 const express = require("express");
 const { esc, selectAll, selectOne, catalystDateTime } = require("../lib/db");
 const { isHeavyAllowed } = require("../lib/featureFlags");
+const { logEvent } = require("../lib/audit");
 
 const router = express.Router();
 
@@ -65,13 +66,21 @@ function reshapeRequest(row) {
 // Parse Catalyst's MODIFIEDTIME format ("2026-05-19 00:48:01:386" — note
 // the colon-separated millis instead of a dot). Returns epoch ms or null
 // if unparseable.
+//
+// Catalyst SYSTEM columns CREATEDTIME / MODIFIEDTIME are emitted in the
+// PROJECT timezone (Asia/Kolkata, +05:30) — NOT UTC. Appending "Z" treated
+// them as UTC, shifting every timestamp +5.5h into the future so
+// `Date.now() - mtMs` went negative and the staleness gate never fired — the
+// sweep silently recovered nothing. MUST match CATALYST_TS_OFFSET in
+// functions/dossier-sweeper/index.js and the Catalyst project timezone.
+const CATALYST_TS_OFFSET = "+05:30";
 function parseCatalystTimestamp(s) {
   if (!s) return null;
   // Normalize "YYYY-MM-DD HH:MM:SS:mmm" → "YYYY-MM-DDTHH:MM:SS.mmm"
   const normalized = String(s)
     .replace(" ", "T")
     .replace(/:(\d{3})$/, ".$1");
-  const ms = new Date(normalized + "Z").getTime();
+  const ms = new Date(normalized + CATALYST_TS_OFFSET).getTime();
   return Number.isNaN(ms) ? null : ms;
 }
 
@@ -346,6 +355,23 @@ router.post("/generate", async (req, res) => {
         "created but no Job dispatched (Phase 3 not yet deployed)",
       );
     }
+
+    // Audit: one dossier_create event per accepted request. target_id is the
+    // dossier_requests ROWID — the audit read API enriches it with the row's
+    // LIVE status/stage at display time (we don't log every status transition,
+    // which would require Python-generator changes). Fire-and-forget.
+    logEvent(req, {
+      eventType: "dossier_create",
+      action: heavyAllowed ? "heavy" : "light",
+      targetType: "dossier_request",
+      targetId: requestId,
+      targetLabel: intake.name || intake.email || intake.linkedin_url || intake.company_url || null,
+      metadata: {
+        engine: heavyAllowed ? "heavy" : "light",
+        company_url: intake.company_url || null,
+        has_linkedin: !!intake.linkedin_url,
+      },
+    });
 
     return res.json({
       request_id: requestId,

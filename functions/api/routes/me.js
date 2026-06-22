@@ -1,5 +1,6 @@
 const express = require("express");
 const { isHeavyAllowed } = require("../lib/featureFlags");
+const { logEvent } = require("../lib/audit");
 
 const router = express.Router();
 
@@ -36,6 +37,24 @@ router.get("/role", (req, res) => {
     isSuperAdmin: req.isSuperAdmin,
     roles: [req.role],
   });
+});
+
+// POST /me/session-start — login beacon for the Audit Report.
+//
+// Catalyst Native Auth exposes no server-side "login happened" hook (the
+// session is cookie-based and every request looks the same), so the client
+// fires this exactly once per browser session — guarded by a sessionStorage
+// flag in app/src/lib/auth.tsx — right after auth resolves. The body is
+// ignored; the actor is taken only from the authenticated session, so a
+// caller can never forge a login for someone else. Always 200 so a flaky
+// beacon never surfaces an error in the UI; the audit write is best-effort.
+router.post("/session-start", (req, res) => {
+  logEvent(req, {
+    eventType: "login",
+    action: "session_start",
+    metadata: { ua: String(req.get("user-agent") || "").slice(0, 250) },
+  });
+  res.json({ ok: true });
 });
 
 // Self-service password reset for the logged-in user. The email is taken

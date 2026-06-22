@@ -119,8 +119,9 @@ Same-origin in production (`https://lead-insight-hub-60066539659...`); same-orig
 ## Audit and access logs
 
 - **Catalyst Function logs** — Catalyst Console → Functions → `<function-name>` → Logs. Captures every `console.error` and stdout/stderr line. Retained per Catalyst's default policy (~30 days at the time of this baseline).
-- **Application-level audit** — there is **no dedicated audit table** at v1.0.0. Every state change leaves a trail in the row's `MODIFIEDTIME` and (for `dossier_requests`) the `error_message` / `lead_id` columns. If a richer audit log is needed, the natural next step is a `audit_events` table written by `loadRole` and admin actions.
-- **No PII redaction** — function logs may contain prospect emails when error paths log `console.error("unhandled:", err)`. Treat function logs as containing PII.
+- **Application-level audit** — the `audit_events` table (see `06-data-model.md`) is the org-wide activity log, written fire-and-forget by `lib/audit.js` from the login beacon (`POST /me/session-start`), dossier creation, leads search, and admin mutations. Surfaced at the `/audit` page via `routes/audit.js`.
+- **Audit-log visibility is admin-gated** — every authenticated user GENERATES audit events, but **reading** the org-wide log (`GET /audit` + `/audit/summary`) is restricted to admins and the super-admin via `requireAdminOrSuperAdmin` (the `/audit` UI route is guarded the same way client-side, and the nav link is hidden for non-admins). Within that admin audience the log is fully transparent — it exposes every user's exact free-text search queries and login times — so admins can see what the whole team searched. The table is append-only (no API mutate/delete path); the only delete path is the 120-day retention sweep.
+- **No PII redaction** — function logs may contain prospect emails when error paths log `console.error("unhandled:", err)`. Treat function logs as containing PII. `audit_events.target_label` likewise stores raw search queries and prospect names.
 
 ## Self-signup posture
 

@@ -5,7 +5,22 @@ import {
   isAuthenticated,
   renderSignInForm,
 } from "@/lib/catalyst-client";
-import { getMyProfile, postSignupBootstrap } from "@/lib/api";
+import { getMyProfile, postSignupBootstrap, postSessionStart } from "@/lib/api";
+
+// Fire the login beacon exactly once per browser session. Catalyst Native Auth
+// has no server-side login hook, so this client signal is how the Audit Report
+// records distinct logins. sessionStorage scopes it to the tab session: a page
+// refresh (same session) won't re-log, but a fresh sign-in (new session) will.
+// Best-effort — never blocks or surfaces errors.
+function beaconSessionStart() {
+  try {
+    if (sessionStorage.getItem("_lih_session_beacon") === "1") return;
+    sessionStorage.setItem("_lih_session_beacon", "1");
+  } catch {
+    // sessionStorage unavailable — fire anyway (may double-log, harmless).
+  }
+  postSessionStart().catch(() => {});
+}
 
 export type CatalystUser = {
   user_id: string | number;
@@ -78,6 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           : prev,
       );
+      // Authenticated session confirmed (getMyProfile succeeded) — record the
+      // login once per session for the Audit Report.
+      beaconSessionStart();
     } catch (e) {
       console.warn("[auth] failed to load profile", e);
       setIsAdmin(false);

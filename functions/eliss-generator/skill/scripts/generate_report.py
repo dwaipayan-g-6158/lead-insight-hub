@@ -940,7 +940,9 @@ def svg_dmu_ghost_map(org_intel, lead=None, size_w=760, size_h=560):
     has_eb = has_person(economic_buyer)
     has_ch = has_person(champion)
     has_bl = has_person(blocker)
-    tech_is_contact = (contact_name and technical_eval.get('name', '').strip() == contact_name.strip())
+    # None-safe: technical_eval['name'] can be present-but-null in degraded
+    # synthesis — .get('name','') would return None and crash .strip().
+    tech_is_contact = bool(contact_name and (technical_eval.get('name') or '').strip() == contact_name.strip())
     has_contact_or_tech = has_person(technical_eval) or bool(contact_name)
 
     # ---- Edges rendered FIRST so nodes draw on top of them ------------------
@@ -4142,7 +4144,7 @@ def build_earlyvangelist_html(scoring):
         )
     summary = (
         f'Earlyvangelist scorecard — <strong>{count}/4</strong> pips'
-        + (' · 4-pip = strongest enterprise buyer (book p72)' if count == 4 else '')
+        + (' · 4-pip = strongest enterprise buyer' if count == 4 else '')
         + (' · 3+ pip = HOT-worthy' if count == 3 else '')
         + (' · 2-pip = WARM territory' if count == 2 else '')
         + (' · 0–1 pip = real lead, not the buying moment' if count is not None and count <= 1 else '')
@@ -4283,15 +4285,22 @@ def generate_html_report(data, peer_scores=None):
     }
     def render_source_entry(entry):
         if isinstance(entry, dict):
-            u = entry.get('url', '')
+            # None-safe: a source dict can carry an explicit "url": null (common
+            # in rr_degraded / OSINT-only synthesis where a source has no link).
+            # .get('url', '') returns the default only when the KEY is absent —
+            # a present-but-null value returns None and crashed len() below.
+            u = entry.get('url') or ''
             tier = entry.get('tier', 'C')
             tb = TIER_BADGE.get(tier, TIER_BADGE['C'])
             tier_html = (f'<span class="src-tier" style="background:{tb["bg"]};color:{tb["color"]};'
                          f'display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;'
                          f'font-weight:700;margin-right:4px">{tb["label"]}</span>')
         else:
-            u = str(entry)
+            u = str(entry) if entry is not None else ''
             tier_html = ''
+        # Skip entries with no usable URL rather than emit a dead link / crash.
+        if not u:
+            return ''
         # v6.1: Truncate display text with an explicit ellipsis when shortened.
         # Previously: u[:60] silently chopped the trailing path with no visual
         # cue, making fully-formed URLs look broken (e.g. ".../jobs/newprint"
@@ -4303,9 +4312,11 @@ def generate_html_report(data, peer_scores=None):
     sources_html = ''
     for cat, urls in sources.items():
         if urls:
-            sources_html += f'<div class="source-cat"><strong>{cat.title()}:</strong> '
-            sources_html += ', '.join(render_source_entry(e) for e in urls)
-            sources_html += '</div>'
+            rendered = [s for s in (render_source_entry(e) for e in urls) if s]
+            if rendered:
+                sources_html += f'<div class="source-cat"><strong>{cat.title()}:</strong> '
+                sources_html += ', '.join(rendered)
+                sources_html += '</div>'
 
     # Data quality
     assumptions_html = ''.join(f'<li>{escape_html(a)}</li>' for a in dq.get('assumptions', []))
@@ -5636,7 +5647,7 @@ img,svg,table,pre,code{{max-width:100%}}
   {(lambda html: f'<div class="section infographic-section"><div class="section-title">Earlyvangelist Scorecard</div>{html}</div>' if html else '')(build_earlyvangelist_html(scoring))}
 
   <!-- v7.6 Mom Test: Deal Pre-mortem if_lost / must_be_true (collapsed-by-default) -->
-  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Deal Pre-mortem — book p101</div>{html}</div>' if html else '')(build_deal_premortem_html(data))}
+  {(lambda html: f'<div class="section infographic-section"><div class="section-title">Deal Pre-mortem</div>{html}</div>' if html else '')(build_deal_premortem_html(data))}
 
   <!-- v7.6 Mom Test: Discovery Discipline good/bad question card (collapsed-by-default) -->
   {(lambda html: f'<div class="section infographic-section"><div class="section-title">Discovery Discipline — Do ask, Do NOT ask</div>{html}</div>' if html else '')(build_discovery_discipline_html(data))}
@@ -5720,7 +5731,7 @@ img,svg,table,pre,code{{max-width:100%}}
     {f'<div class="strategy-note" style="margin-top:12px"><strong>Multi-Thread Strategy:</strong> {escape_html(org.get("multi_thread_strategy", ""))}</div>' if org.get('multi_thread_strategy') else ''}
     {(lambda owner: (
         '<div class="strategy-note" style="margin-top:12px;border-left:3px solid #f59e0b;background:rgba(245,158,11,0.06)">'
-        '<strong style="color:#f59e0b">Representative pain-owner (book p97):</strong> '
+        '<strong style="color:#f59e0b">Representative pain-owner:</strong> '
         f'{escape_html(_extract_value(owner.get("name"), ""))} &mdash; {escape_html(_extract_value(owner.get("title"), ""))}.'
         f' {escape_html(_extract_value(owner.get("why"), ""))}'
         f'{render_evidence_chips([owner.get("source_url")], aria_context="pain owner") if owner.get("source_url") else ""}'
@@ -6522,13 +6533,14 @@ def main():
         try:
             log_data = json.loads(Path(args.log).read_text(encoding='utf-8'))
             leads = log_data if isinstance(log_data, list) else log_data.get('leads', [])
-            self_email = data.get('lead', {}).get('email', '').lower()
-            self_name = data.get('lead', {}).get('name', '').lower()
+            _self = data.get('lead') or {}
+            self_email = (_self.get('email') or '').lower()
+            self_name = (_self.get('name') or '').lower()
             peer_scores = [
                 int(l.get('score', 0)) for l in leads
                 if isinstance(l.get('score'), (int, float))
-                and l.get('email', '').lower() != self_email
-                and l.get('name', '').lower() != self_name
+                and (l.get('email') or '').lower() != self_email
+                and (l.get('name') or '').lower() != self_name
             ]
         except (json.JSONDecodeError, OSError):
             pass

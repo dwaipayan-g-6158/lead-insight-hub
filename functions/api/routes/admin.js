@@ -1,5 +1,6 @@
 const express = require("express");
 const { esc, selectAll, selectOne } = require("../lib/db");
+const { logEvent } = require("../lib/audit");
 const { getHtml, putHtml, deleteObject } = require("../lib/stratus");
 const { parseDossier } = require("../lib/parser");
 const {
@@ -123,6 +124,14 @@ router.post("/users/:userId/role", async (req, res) => {
       await datastore.table("user_roles").insertRow({ user_id: targetId, role: newRole });
     }
 
+    logEvent(req, {
+      eventType: "admin_action",
+      action: grant ? `grant_${role}` : `revoke_${role}`,
+      targetType: "user",
+      targetId,
+      targetLabel: `role → ${newRole}`,
+    });
+
     res.json({ ok: true });
   } catch (err) {
     console.error("admin setRole error:", err);
@@ -162,6 +171,13 @@ router.delete("/users/:userId", async (req, res) => {
       // is referenced by name; use the querystring bulk form instead.
       await datastore.table("user_roles").deleteRows([String(existing.ROWID)]);
     }
+
+    logEvent(req, {
+      eventType: "admin_action",
+      action: "delete_user",
+      targetType: "user",
+      targetId,
+    });
 
     res.json({ ok: true });
   } catch (err) {
@@ -224,6 +240,15 @@ router.post("/users", async (req, res) => {
         console.warn("user_roles insert failed (non-fatal):", e?.message);
       }
     }
+
+    logEvent(req, {
+      eventType: "admin_action",
+      action: "create_user",
+      targetType: "user",
+      targetId: newUid || null,
+      targetLabel: email_id,
+      metadata: { role },
+    });
 
     res.status(201).json({
       id: newUid,
@@ -308,6 +333,12 @@ router.post("/restamp-tabs", async (req, res) => {
         errors.push({ rowid: row.ROWID, key: oldKey, error: err?.message || String(err) });
       }
     }
+
+    logEvent(req, {
+      eventType: "admin_action",
+      action: "restamp_tabs",
+      metadata: { scanned: rows.length, patched, skipped, missing, failed },
+    });
 
     res.json({
       scanned: rows.length,

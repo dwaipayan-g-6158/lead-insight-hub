@@ -1,5 +1,5 @@
 const express = require("express");
-const { attachCatalyst, requireUser, loadRole, requireAdmin, requireSuperAdmin } = require("./lib/auth");
+const { attachCatalyst, requireUser, loadRole, requireAdmin, requireSuperAdmin, requireAdminOrSuperAdmin } = require("./lib/auth");
 
 const app = express();
 app.use(express.json({ limit: "6mb" }));
@@ -25,6 +25,10 @@ app.use("/me", require("./routes/me"));
 app.use("/leads", require("./routes/leads"));
 app.use("/dossiers", require("./routes/dossiers"));
 app.use("/stats", require("./routes/stats"));
+// Org-wide audit feed — readable by admins + super-admin only (every user
+// still GENERATES events; only viewing the log is gated). requireAdminOrSuperAdmin
+// reads req.isAdmin/isSuperAdmin set by loadRole above.
+app.use("/audit", requireAdminOrSuperAdmin, require("./routes/audit"));
 
 // Super-admin-only: global generation settings. MUST be mounted before the
 // `/admin` router below — Express matches `/admin` as a prefix, so the broad

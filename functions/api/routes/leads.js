@@ -4,6 +4,7 @@ const { requireAdmin } = require("../lib/auth");
 const { esc, selectAll, selectOne, catalystDateTime } = require("../lib/db");
 const { getSignedUrl, deleteObject } = require("../lib/stratus");
 const { parseAndStoreDossier } = require("../lib/storeDossier");
+const { logEvent, logSearch, shouldLogView } = require("../lib/audit");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -360,6 +361,25 @@ router.get("/", async (req, res) => {
       });
     }
 
+    // Audit: log the free-text search for the Audit Report. We only record
+    // genuine query strings (≥2 chars) — tier/score/ICP chip clicks alone are
+    // navigation noise, not "what the team is searching for". logSearch()
+    // collapses a per-keystroke typing burst (z → zo → … → zohocorp) into one
+    // row by updating it in place; the active filters ride along in metadata.
+    // Fire-and-forget; result count is the post-filter total.
+    const rawQuery = q.search != null ? String(q.search).trim() : "";
+    if (rawQuery.length >= 2) {
+      const activeFilters = {};
+      if (q.tier) activeFilters.tier = String(q.tier);
+      if (q.company) activeFilters.company = String(q.company);
+      if (q.confidence) activeFilters.confidence = String(q.confidence);
+      if (q.icp_min != null && q.icp_min !== "") activeFilters.icp_min = String(q.icp_min);
+      if (q.min_score != null && q.min_score !== "") activeFilters.min_score = String(q.min_score);
+      if (q.max_score != null && q.max_score !== "") activeFilters.max_score = String(q.max_score);
+      if (q.mine === "1" || q.mine === "true") activeFilters.mine = true;
+      logSearch(req, { query: rawQuery, filters: activeFilters, results: filtered.length });
+    }
+
     res.json({ leads: filtered });
   } catch (err) {
     console.error("list error:", err);
@@ -409,6 +429,19 @@ router.get("/:id", async (req, res) => {
         .table("leads")
         .updateRow({ ROWID: id, opened_by_creator_at: catalystDateTime(new Date()) })
         .catch((e) => console.warn("opened_by_creator_at stamp failed:", e?.message));
+    }
+
+    // Audit: record the dossier view (org-wide feed). Deduped per (user, lead)
+    // for 60s so a re-render / back-and-forth doesn't spam the log. Fire-and-forget.
+    if (shouldLogView(req.userId, id)) {
+      logEvent(req, {
+        eventType: "lead_view",
+        action: "lead",
+        targetType: "lead",
+        targetId: id,
+        targetLabel: lead.lead_name || lead.company || null,
+        metadata: lead.company ? { company: lead.company } : null,
+      });
     }
 
     const signalRows = await selectAll(

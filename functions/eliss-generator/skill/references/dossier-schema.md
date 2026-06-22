@@ -81,11 +81,11 @@ New top-level `data` block holds the Mom Test surfaces. Powers Tab 1 hero cards 
       {"question": "...", "template": "Talk me through the last time…", "anchor_fact_ref": "signals.positive[sig-005]"}
     ],
     "bad_questions": [
-      {"question": "...", "why_bad": "anything involving the future is an over-optimistic lie (book p15)"}
+      {"question": "...", "why_bad": "anything involving the future is an over-optimistic lie"}
     ],
     "anti_patterns": [
       "'I noticed your company...' — feature-rep boilerplate.",
-      "Treating a compliment as a buying signal — a stall is not advancement (Ch5)."
+      "Treating a compliment as a buying signal — a stall is not advancement."
     ]
   },
   "rep_list_of_3": [
@@ -98,7 +98,7 @@ New top-level `data` block holds the Mom Test surfaces. Powers Tab 1 hero cards 
     "must_ask_live":        [{"question": "...", "why_unsettleable": "..."}]
   },
   "deal_premortem": {
-    "if_lost": "The single most likely loss scenario in one sentence (book p101).",
+    "if_lost": "The single most likely loss scenario in one sentence.",
     "must_be_true_to_win": ["3–5 success preconditions"]
   }
 }

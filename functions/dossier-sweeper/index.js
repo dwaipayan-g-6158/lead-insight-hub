@@ -25,6 +25,16 @@ const catalyst = require('zcatalyst-sdk-node');
 const STALE_AFTER_MS = 15 * 60 * 1000; // MUST match dossiers.js STALE_AFTER_MS
 const PAGE = 300; // ZCQL hard-caps SELECT at 300 rows — always paginate
 
+// Audit-log retention. audit_events rows older than this are hard-deleted on
+// every sweep (cheap: the SELECT usually matches 0 rows once steady-state).
+// The product retention policy is 120 days. We key off audit_events.occurred_at
+// — which lib/audit.js writes in UTC via catalystDateTime() — and compute the
+// cutoff in the SAME UTC basis (NOT the +05:30 CATALYST_TS_OFFSET used for the
+// system CREATEDTIME/MODIFIEDTIME columns above), so the comparison is
+// apples-to-apples with no timezone drift.
+const AUDIT_RETENTION_DAYS = 120;
+const DELETE_BATCH = 200;
+
 async function selectAll(zcql, base, table) {
   let off = 0;
   const out = [];
@@ -44,12 +54,20 @@ function truthy(v) {
   return v === true || v === 1 || v === '1' || v === 'true';
 }
 
-// Parse Catalyst's MODIFIEDTIME ("2026-06-16 00:24:56:386" — colon-separated
-// millis, UTC). Returns epoch ms or null.
+// Catalyst SYSTEM columns CREATEDTIME / MODIFIEDTIME are emitted in the
+// PROJECT timezone (Asia/Kolkata, +05:30) — NOT UTC, despite the colon-millis
+// format looking timezone-less. Appending "Z" here treated them as UTC, which
+// shifted every timestamp +5.5h into the future: `Date.now() - mtMs` went
+// negative, the staleness gate `<= STALE_AFTER_MS` was always true, the
+// ASC-sorted loop broke on the first row, and NO stale dossier_requests row
+// was ever resumed or failed (orphaned rows hung at status=running forever).
+// MUST match CATALYST_TS_OFFSET in functions/api/routes/dossiers.js and the
+// Catalyst project timezone (Settings → project → timezone).
+const CATALYST_TS_OFFSET = '+05:30';
 function parseCatalystTimestamp(s) {
   if (!s) return null;
   const normalized = String(s).replace(' ', 'T').replace(/:(\d{3})$/, '.$1');
-  const ms = new Date(normalized + 'Z').getTime();
+  const ms = new Date(normalized + CATALYST_TS_OFFSET).getTime();
   return Number.isNaN(ms) ? null : ms;
 }
 
@@ -60,6 +78,39 @@ function catalystDateTime(d) {
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
     ` ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
   );
+}
+
+// Hard-delete audit_events older than AUDIT_RETENTION_DAYS. Returns the number
+// of rows purged. Idempotent; safe to run on every sweep. occurred_at is UTC,
+// so the cutoff is computed in UTC via catalystDateTime() — no offset applied.
+async function sweepAuditRetention(zcql, datastore) {
+  const cutoff = catalystDateTime(
+    new Date(Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+  );
+  const rows = await selectAll(
+    zcql,
+    `SELECT ROWID FROM audit_events WHERE occurred_at < '${cutoff}'`,
+    'audit_events',
+  );
+  const ids = rows.map((r) => r.ROWID).filter(Boolean).map((x) => String(x));
+  if (!ids.length) return 0;
+  // deleteRows (never deleteRow) with string ROWIDs — both documented gotchas.
+  for (let i = 0; i < ids.length; i += DELETE_BATCH) {
+    await datastore.table('audit_events').deleteRows(ids.slice(i, i + DELETE_BATCH));
+  }
+  return ids.length;
+}
+
+// Wrapper: non-throwing so audit retention never fails the dossier sweep.
+async function runAuditRetention(zcql, datastore) {
+  try {
+    const purged = await sweepAuditRetention(zcql, datastore);
+    if (purged) {
+      console.log(`dossier-sweeper: purged ${purged} audit_events older than ${AUDIT_RETENTION_DAYS}d`);
+    }
+  } catch (e) {
+    console.warn('dossier-sweeper: audit retention failed:', e.message);
+  }
 }
 
 // Resume toggles + caps from the app_settings singleton (best-effort; {} on
@@ -108,6 +159,7 @@ module.exports = async (jobRequest, context) => {
 
     if (!rows.length) {
       console.log('dossier-sweeper: no pending/running rows');
+      await runAuditRetention(zcql, datastore);
       context.closeWithSuccess();
       return;
     }
@@ -202,6 +254,7 @@ module.exports = async (jobRequest, context) => {
     console.log(
       `dossier-sweeper done: scanned=${rows.length} resumed=${resumed} failed=${failed}`,
     );
+    await runAuditRetention(zcql, datastore);
     context.closeWithSuccess();
   } catch (error) {
     console.error('dossier-sweeper error:', error);

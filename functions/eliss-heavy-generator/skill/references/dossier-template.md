@@ -651,15 +651,15 @@ After presenting the conversational dossier, write a JSON file with this schema.
         {"question": "What else have you tried for access-review automation — the parent's GRC platform, a SOAR playbook, or something homegrown?", "template": "What else have you tried?", "anchor_fact_ref": "scoring.earlyvangelist.has_makeshift_solution — manual CSV reconciliation"}
       ],
       "bad_questions": [
-        {"question": "Do you think automated access reviews would be a good idea?", "why_bad": "People lie to be nice (p14). Opinions about hypothetical tools are uncalibrated — only behavior against the current workaround matters."},
-        {"question": "Would you buy a SIEM that handled CJIS retention?", "why_bad": "Anything involving the future is an over-optimistic lie (p15). Replace with 'how are you dealing with retention now' to anchor on present behavior."},
-        {"question": "How much would you pay for an access-review automation tool?", "why_bad": "People will lie if they think it's what you want to hear (p16). Price discovery comes from current spend on workarounds, not hypotheticals."},
-        {"question": "Do you ever struggle with the quarterly access review?", "why_bad": "Fluff-inducer (p15) — 'do you ever' produces a generic average that doesn't describe any real instance. Use 'talk me through the last one' instead."}
+        {"question": "Do you think automated access reviews would be a good idea?", "why_bad": "People lie to be nice. Opinions about hypothetical tools are uncalibrated — only behavior against the current workaround matters."},
+        {"question": "Would you buy a SIEM that handled CJIS retention?", "why_bad": "Anything involving the future is an over-optimistic lie. Replace with 'how are you dealing with retention now' to anchor on present behavior."},
+        {"question": "How much would you pay for an access-review automation tool?", "why_bad": "People will lie if they think it's what you want to hear. Price discovery comes from current spend on workarounds, not hypotheticals."},
+        {"question": "Do you ever struggle with the quarterly access review?", "why_bad": "Fluff-inducer — 'do you ever' produces a generic average that doesn't describe any real instance. Use 'talk me through the last one' instead."}
       ],
       "anti_patterns": [
         "'I noticed your company...' — feature-rep boilerplate; banned in opening_hook and outreach.hook.",
         "'Are you currently struggling with...' — problem-shaming, produces defensive deflection.",
-        "Treating a compliment ('that's interesting, send me more info') as a buying signal (Ch5). A reply that isn't advancement in time, reputation, or cash is a stall, not a yes."
+        "Treating a compliment ('that's interesting, send me more info') as a buying signal. A reply that isn't advancement in time, reputation, or cash is a stall, not a yes."
       ]
     },
     "rep_list_of_3": [

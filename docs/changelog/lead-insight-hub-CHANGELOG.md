@@ -10,7 +10,36 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-17 is promoted; see [1.2.1])_
+- _(none — all development work through 2026-06-23 is promoted; see [1.3.0])_
+
+---
+
+## [1.3.0] — 2026-06-23
+
+Development work promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000280326`, Development → Production, fully additive — **20 entities**: 1 table + 14 columns added, 4 functions updated, web client updated; **zero deletions, zero row-data changes, no auth gate**). All 25 components completed with empty error logs. See [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md) §"Deployment history".
+
+> The function-level fixes below (timezone, renderer hardening, None-safety) were first hotfixed to prod on 2026-06-18 (Serverless-only deploy `31210000000260137`, never changelogged); this release records them and ships the audit feature (table + UI) that was built on Dev afterwards.
+
+### Added
+
+- **Org-wide Audit Report.** A new `audit_events` Data Store table (GLOBAL scope, append-only, **120-day retention**) and `/audit` web page (admin + super-admin only) that logs every authenticated user's logins, dossier creations, lead searches, lead views, and admin actions. Writes are **fire-and-forget** (`functions/api/lib/audit.js`) so a logging failure never breaks a user action; reads are served by `GET /audit` + `GET /audit/summary`, both gated by the new `requireAdminOrSuperAdmin` middleware. Dossier-status is enriched live at read time (not stored on the event). See `functions/api/routes/audit.js`, `app/src/components/AuditPage.tsx`, and [`../architecture/06-data-model.md`](../architecture/06-data-model.md).
+  - `POST /me/session-start` — login beacon, fired once per browser session (client `sessionStorage`-gated). Every user generates events; only admins read the log.
+  - Search typing-burst collapse — a leads search like `z → zo → zohocorp` coalesces into a single audit row (12-second session window); lead views dedup per user+lead (60s).
+  - 120-day retention enforced by `functions/dossier-sweeper` on every 5-minute sweep (batched hard-delete, non-blocking).
+
+### Changed
+
+- **Critical timezone fix.** Catalyst system columns `CREATEDTIME` / `MODIFIEDTIME` are emitted in the project timezone (Asia/Kolkata, **+05:30**), not UTC. The original code appended `"Z"`, shifting timestamps +5.5h into the future so the staleness gate always evaluated true and the dossier sweep broke on the first row. Fixed in `functions/api/routes/dossiers.js` **and** `functions/dossier-sweeper/index.js` by appending the `+05:30` offset — the two **must stay in sync**.
+- **Dossier-sweeper double-duty** — in addition to resuming stale dossiers, it now purges `audit_events` older than 120 days each sweep (idempotent, non-blocking).
+- **Generator hardening (Light + Heavy)** — the renderer-crash handler now unconditionally patches the row to `status=failed` (previously left at `running` forever); new `_sanitize_name()` strips HTML tags and control characters from intake names before synthesis/render (defense against injection like `<img src=x onerror=...>`).
+- **Synthesis None-safety** in `generate_report.py` (both forks) — null source URLs, peer-score null checks, and the SVG DMU ghost-map name comparison now coerce `None → ''` instead of crashing `.strip()` / `len()` on degraded (rr_degraded / OSINT-only) synthesis paths.
+- **Reference cleanup** — removed external book-page citations (`(book p72)`, `(Ch5)`, …) from the generated dossier schema/template so the schema is the single source of truth for synthesis.
+
+### Fixed
+
+- Orphaned dossier rows hung at `running` forever after a renderer crash → now marked `failed`.
+- Renderer crashes on adversarial lead names containing markup/control characters → now sanitized.
+- Missing/null source links in degraded synthesis → skipped gracefully instead of crashing the render.
 
 ---
 

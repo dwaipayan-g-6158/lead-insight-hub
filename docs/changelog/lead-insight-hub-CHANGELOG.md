@@ -10,7 +10,27 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-23 is promoted; see [1.3.0])_
+- _(none — all development work through 2026-06-24 is promoted; see [1.4.0])_
+
+---
+
+## [1.4.0] — 2026-06-24
+
+Development work promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000299035`, Development → Production, fully additive — **2 entities**: 1 function updated (`api`) + web client updated; **zero schema/data changes, no new tables/columns, no auth gate**). The pre-deploy diff confirmed Data Store, Stratus, Cron, Job Scheduling, and every authentication component at **Total Changes: 0**. See [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md) §"Deployment history".
+
+### Added
+
+- **Interactive Audit KPI cards.** The four summary tiles on the `/audit` page — *Events today*, *Active users*, *Dossiers today*, *Searches today* — are now clickable. Each opens a drill-down popup (desktop **Dialog** / mobile **Drawer**, switched on `useIsMobile()`) that lists the exact rows behind the number:
+  - *Events / Dossiers / Searches* render the underlying audit-event list (the same row renderer as the main feed).
+  - *Active users* renders a per-user roster — name, email, event count, last-activity, and a per-type breakdown.
+  - New backend route **`GET /audit/drilldown?card=events|active_users|dossiers|searches`** (`functions/api/routes/audit.js`), gated by the same `requireAdminOrSuperAdmin` middleware as the rest of `/audit`. It **reproduces `GET /audit/summary`'s exact rolling-24h window test** so every drill-down's count matches its card number exactly. Read-only — no new persistence, no schema change.
+- **Drill-down "fly-to-card" close animation.** Closing a drill-down popup minimizes it back into the exact KPI card that opened it (and emerges from that card on open), reusing the `flyTarget` FLIP mechanism (`DialogContent` + the `.dialog-fly` keyframes in `styles.css`) first shipped for the reset-password dialog in [1.1.0]. Each tile carries a `data-kpi="<card>"` attribute so the dialog can target the specific clicked card; the displayed card is retained through the close so the fly-out animation keeps its target. Respects `prefers-reduced-motion` (collapses to an instant cut).
+
+### Changed
+
+- **Audit page refactor.** Shared event-row rendering — the responsive table / mobile-card list plus its `TYPE_META`, `FILTERS`, `relTime`, `absTime`, `initialsOf`, and `describe` helpers — was extracted from `AuditPage.tsx` into a new `AuditEventList.tsx`, so the main audit feed and the new drill-down popups render rows identically. No behavior change to the existing feed.
+
+**Files:** `functions/api/routes/audit.js`; `app/src/components/{AuditPage,AuditDrilldownDialog,AuditEventList}.tsx`; `app/src/lib/api.ts`; `app/src/types/audit.ts`.
 
 ---
 

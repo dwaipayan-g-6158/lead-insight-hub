@@ -301,7 +301,12 @@ export async function adminCreateUser({
 
 // ---------- audit report ----------
 
-import type { AuditFeedResponse, AuditSummary } from "@/types/audit";
+import type {
+  AuditFeedResponse,
+  AuditSummary,
+  AuditDrilldownCard,
+  AuditDrilldownResponse,
+} from "@/types/audit";
 
 export type AuditFeedInput = {
   event_type?: string; // comma-separated list of AuditEventType
@@ -320,6 +325,11 @@ export async function getAuditLog({ data }: { data?: AuditFeedInput } = {}) {
 
 export async function getAuditSummary() {
   return call<AuditSummary>(`/audit/summary`);
+}
+
+export async function getAuditDrilldown({ data }: { data: { card: AuditDrilldownCard } }) {
+  const qs = toQueryString({ card: data.card } as Record<string, unknown>);
+  return call<AuditDrilldownResponse>(`/audit/drilldown${qs}`);
 }
 
 // ---------- super-admin generation settings ----------

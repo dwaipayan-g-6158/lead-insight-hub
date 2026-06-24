@@ -60,3 +60,33 @@ export type AuditSummary = {
   top_searchers_7d: { name: string; count: number }[];
   series_7d: AuditDaySeries[];
 };
+
+// ---- KPI card drill-downs (GET /audit/drilldown?card=…) ----
+// Each card maps to the exact rows behind its number (rolling last-24h).
+
+export type AuditDrilldownCard = "events" | "active_users" | "dossiers" | "searches";
+
+// One distinct user active in the last 24h (active_users card).
+export type AuditActiveUser = {
+  user_id: string;
+  actor_name: string | null;
+  actor_email: string | null;
+  count: number;
+  /** ISO-8601 UTC (…Z) of the user's most recent event in-window. */
+  last_at: string | null;
+  by_type: Partial<Record<AuditEventType, number>>;
+};
+
+export type AuditDrilldownResponse =
+  | {
+      card: "events" | "dossiers" | "searches";
+      window_hours: number;
+      count: number;
+      events: AuditEvent[];
+    }
+  | {
+      card: "active_users";
+      window_hours: number;
+      count: number;
+      users: AuditActiveUser[];
+    };

@@ -261,4 +261,79 @@ router.get("/summary", async (req, res) => {
   }
 });
 
+// GET /audit/drilldown?card=events|active_users|dossiers|searches
+// Returns the exact rows behind a KPI card. Parity with /summary is guaranteed
+// by reproducing its rolling-24h JS test verbatim (occurred_at >= cutoff24h),
+// rather than trusting a date-only DB bound.
+const DRILL_CARDS = new Set(["events", "active_users", "dossiers", "searches"]);
+const CARD_TYPE = { dossiers: "dossier_create", searches: "search" };
+
+router.get("/drilldown", async (req, res) => {
+  try {
+    const card = String((req.query && req.query.card) || "").trim();
+    if (!DRILL_CARDS.has(card)) {
+      return res.status(400).json({ error: "invalid card" });
+    }
+
+    const app = req.catalystAdminApp || req.catalystApp;
+    const zcql = app.zcql();
+
+    const now = Date.now();
+    const cutoff24h = now - 24 * 60 * 60 * 1000;
+    // 2s slack on the DB bound so rounding never drops a boundary row before
+    // the authoritative JS gate below runs.
+    const cutoffStr = catalystDateTime(new Date(cutoff24h - 2000));
+
+    const typeName = CARD_TYPE[card]; // undefined for events / active_users
+    const where =
+      `WHERE occurred_at >= '${esc(cutoffStr)}'` +
+      (typeName ? ` AND event_type = '${esc(typeName)}'` : "");
+    const base = `SELECT ${AUDIT_COLS.join(", ")} FROM audit_events ${where} ORDER BY occurred_at DESC`;
+    const rows = await selectAll(zcql, base, "audit_events");
+
+    // Authoritative parity gate — identical to /summary's isToday test.
+    const todayRows = rows.filter((r) => {
+      const t = Date.parse(occurredToIso(r.occurred_at));
+      return Number.isFinite(t) && t >= cutoff24h;
+    });
+
+    if (card === "active_users") {
+      const byUser = new Map(); // user_id -> aggregate
+      for (const r of todayRows) {
+        if (!r.user_id) continue; // same guard as summary's activeUsers24h
+        const key = String(r.user_id);
+        let u = byUser.get(key);
+        if (!u) {
+          u = {
+            user_id: key,
+            actor_name: r.actor_name ?? null,
+            actor_email: r.actor_email ?? null,
+            count: 0,
+            last_at: null,
+            by_type: {},
+          };
+          byUser.set(key, u);
+        }
+        u.count += 1;
+        if (r.event_type) u.by_type[r.event_type] = (u.by_type[r.event_type] || 0) + 1;
+        const iso = occurredToIso(r.occurred_at);
+        if (iso && (!u.last_at || iso > u.last_at)) u.last_at = iso;
+        if (!u.actor_name && r.actor_name) u.actor_name = r.actor_name;
+        if (!u.actor_email && r.actor_email) u.actor_email = r.actor_email;
+      }
+      const users = Array.from(byUser.values()).sort((a, b) =>
+        (b.last_at || "").localeCompare(a.last_at || ""),
+      );
+      return res.json({ card, window_hours: 24, count: users.length, users });
+    }
+
+    const events = todayRows.map(reshapeEvent);
+    await enrichDossierStatus(zcql, events);
+    res.json({ card, window_hours: 24, count: events.length, events });
+  } catch (err) {
+    console.error("audit.drilldown error:", err);
+    res.status(500).json({ error: err.message || "audit drilldown failed" });
+  }
+});
+
 module.exports = router;

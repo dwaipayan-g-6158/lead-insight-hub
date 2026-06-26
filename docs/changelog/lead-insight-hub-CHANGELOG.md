@@ -10,6 +10,14 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
+- _(none — all development work through 2026-06-26 is promoted; see [1.5.0])_
+
+---
+
+## [1.5.0] — 2026-06-26
+
+Development work promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000296130`, Development → Production, fully additive — **2 entities**: 1 function updated (`api`) + web client updated; **zero schema/data changes, no new tables/columns, no auth gate**). The pre-deploy diff confirmed Data Store, NoSQL, File Store, Stratus, Cron, Job Pool, API Gateway, Cache, Mobile-app settings, and every authentication component at **Total Changes: 0**. All 25 components completed with empty error logs. Promotion is console-wizard only — there is no CLI path to Production (see [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md)).
+
 ### Added
 
 - **On-demand PDF export.** Lead dossiers now download as a single, professionally formatted **PDF** instead of raw HTML. The PDF is rendered on demand from the stored dossier HTML via Catalyst **SmartBrowz** (headless Chromium), so it is faithful to the report's existing `@media print` CSS (white background, page breaks, branding). The first render is cached to Stratus under `pdf/<leadId>.pdf` and reused on subsequent downloads (~250 ms cache hit vs ~10 s cold render). New route **`GET /leads/:id/pdf`** (auth + id validation mirroring `GET /:id`), streamed as `application/pdf` with a `Content-Disposition` attachment filename. The download button shows a spinner / "Preparing PDF…" state while rendering. Files: `functions/api/routes/leads.js`, `functions/api/lib/stratus.js` (new `getObjectBuffer`/`putBuffer`/`streamToBuffer` helpers), `app/src/lib/api.ts` (`fetchLeadPdf`), `app/src/components/LeadDetailPage.tsx`.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@/lib/use-server-fn";
-import { getLead, deleteLead, fetchLeadPdf } from "@/lib/api";
+import { getLead, deleteLead, fetchLeadPdf, leadPdfUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
@@ -111,6 +111,39 @@ export function LeadDetailPage({ id }: { id: string }) {
     try {
       const baseName = `${(data.lead.lead_name || "dossier").replace(/[^a-zA-Z0-9._-]/g, "_")}-${id}.pdf`;
       const blob = await fetchLeadPdf(id);
+
+      // Mobile (coarse pointer): use the native share sheet with a real, NAMED
+      // File so the saved/shared file keeps its name. Our previous approach
+      // opened a blob: URL, which has no filename — iOS then shared it as
+      // "unknown.pdf". `canShare({files})` gates File-sharing support (iOS
+      // Safari 15+, Android Chrome). Desktop stays on the direct download below
+      // so we don't surprise it with an OS share sheet.
+      const isCoarse =
+        typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)")?.matches;
+      const file = new File([blob], baseName, { type: "application/pdf" });
+      if (isCoarse && typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: baseName });
+          return;
+        } catch (err) {
+          // User dismissed the share sheet — done. Any other error (e.g. the
+          // transient-activation window lapsed during a slow render) falls
+          // through to the URL/download fallback below.
+          if ((err as Error)?.name === "AbortError") return;
+        }
+      }
+
+      // iOS Safari ignores the <a download> attribute on blob URLs, so there we
+      // open the same-origin endpoint URL instead — the server's
+      // Content-Disposition names the file (not "unknown.pdf"). Desktop and
+      // everything else get the normal named blob download.
+      const isIOS =
+        /iP(hone|ad|od)/.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+      if (isIOS) {
+        window.open(leadPdfUrl(id), "_blank", "noopener");
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

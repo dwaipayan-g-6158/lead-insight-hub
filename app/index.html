@@ -14,7 +14,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ELISS" />
-    <link rel="apple-touch-icon" href="/app/logo.svg" />
+    <!-- iOS home-screen tile: must be a PNG (iOS ignores SVG apple-touch-icons
+         and fills transparency with black, so this is an opaque tile). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/app/apple-touch-icon.png" />
+    <!-- PWA manifest drives the Android/Chrome install icon + standalone mode. -->
+    <link rel="manifest" href="/app/manifest.webmanifest" />
     <!-- Catalyst Web SDK is loaded + initialized by src/lib/catalyst-client.ts.
          The auto-injected /__catalyst/sdk/init.js is intentionally skipped because
          it ships api_domain:"" on Web Client Hosting, which yields broken URLs. -->

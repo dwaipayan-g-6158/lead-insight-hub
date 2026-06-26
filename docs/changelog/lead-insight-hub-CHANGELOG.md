@@ -10,7 +10,20 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-26 is promoted; see [1.5.1])_
+### Added
+
+- **Home-screen / PWA icon.** "Add to Home Screen" now uses the ELISS logo. Added an opaque-tile **`apple-touch-icon.png`** (180×180, the logo on `#0a0a0e`) for the iOS home-screen, plus a **`manifest.webmanifest`** (`short_name: "ELISS"`, `display: standalone`) with 192/512 and a 512 **maskable** icon for Android/Chrome install. `app/index.html` now links the PNG apple-touch-icon (previously an SVG, which iOS ignores) and the manifest. *(app/public/{apple-touch-icon,icon-192,icon-512,icon-maskable-512}.png, app/public/manifest.webmanifest, app/index.html)*
+- **Completion-alert toggles on mobile.** "Success sound" and "Desktop notification" — previously only in the desktop account dropdown (`hidden md:flex`) — are now in the mobile bottom-sheet menu (`MobileNavSheet`) under "Completion alerts", as full-row switches that don't close the sheet. Mobile users can finally enable either. *(app/src/components/MobileNavSheet.tsx, AppShell.tsx)*
+
+### Changed
+
+- **Mobile PDF download uses the native share sheet.** On touch devices the dossier PDF is now shared via the **Web Share API** with a real, named `File`, so the saved/shared file keeps its `<lead-name>-<id>.pdf` name; falls back to opening the same-origin endpoint URL (whose `Content-Disposition` names the file). Desktop keeps the direct download. *(app/src/components/LeadDetailPage.tsx, app/src/lib/api.ts `leadPdfUrl`)*
+- **Toasts are bottom-center on mobile** (full-width, legible) and stay bottom-right on desktop, switched on `useIsMobile()`. *(app/src/routes/__root.tsx)*
+
+### Fixed
+
+- **PDF shared as "unknown.pdf" on iOS.** The earlier iOS fallback opened an anonymous `blob:` URL (no filename), so iOS's share sheet labelled it `unknown.pdf`. Replaced with the named-File share / endpoint-URL approach above.
+- **Settings sticky save bar** now respects the iPhone safe area (`pb-[max(env(safe-area-inset-bottom),0.75rem)]`) so it isn't covered by the home indicator. *(app/src/components/SettingsPage.tsx)*
 
 ---
 

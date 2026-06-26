@@ -122,6 +122,15 @@ export async function fetchLeadPdf(id: string): Promise<Blob> {
   return await res.blob();
 }
 
+// Same-origin URL of the PDF endpoint. Used on mobile as a fallback when the
+// Web Share API isn't available: opening this URL lets the server's
+// `Content-Disposition: attachment; filename="…"` name the file, whereas a
+// blob: URL has no name and saves/shares as "unknown.pdf". Cookie auth
+// (`credentials: include` elsewhere) carries over on same-origin navigation.
+export function leadPdfUrl(id: string): string {
+  return `${BASE}/leads/${encodeURIComponent(id)}/pdf`;
+}
+
 export async function deleteLead({ data }: { data: { id: string } }) {
   return call<{ ok: boolean }>(`/leads/${encodeURIComponent(data.id)}`, { method: "DELETE" });
 }

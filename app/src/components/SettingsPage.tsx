@@ -568,7 +568,7 @@ export function SettingsPage() {
         </Tabs>
 
         {/* Sticky save bar */}
-        <div className="sticky bottom-0 z-10 mt-6 -mx-4 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur">
+        <div className="sticky bottom-0 z-10 mt-6 -mx-4 border-t border-border/60 bg-background/95 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-muted-foreground">
               {dirty ? `${dirtyKeys.length} unsaved change${dirtyKeys.length > 1 ? "s" : ""}` : "No changes"}

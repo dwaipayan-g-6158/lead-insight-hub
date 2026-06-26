@@ -375,6 +375,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               isAdmin={isAdmin}
               isSuperAdmin={isSuperAdmin}
               isActive={isActive}
+              soundOn={soundOn}
+              notifyOn={notifyOn}
+              onToggleSound={onToggleSound}
+              onToggleNotify={onToggleNotify}
               onResetPassword={() => {
                 setMobileOpen(false);
                 setResetOpen(true);

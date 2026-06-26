@@ -3,6 +3,7 @@ import { AuthProvider } from "@/lib/auth";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 function NotFoundComponent() {
   return (
@@ -32,6 +33,10 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  // Bottom-center (full-width) on mobile so toasts stay legible on a narrow
+  // screen; bottom-right on desktop. (Sonner's `position` is global, not
+  // responsive on its own, so we switch it off the viewport.)
+  const isMobile = useIsMobile();
   return (
     <AuthProvider>
       <AuthGate>
@@ -39,7 +44,7 @@ function RootComponent() {
           <Outlet />
         </AppShell>
       </AuthGate>
-      <Toaster richColors closeButton position="bottom-right" />
+      <Toaster richColors closeButton position={isMobile ? "bottom-center" : "bottom-right"} />
     </AuthProvider>
   );
 }

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Upload, X, FileSearch, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/Spinner";
 import { tierClasses } from "@/lib/tier";
 import { safeDate } from "@/lib/utils";
@@ -149,30 +150,30 @@ export function LeadsListPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Search every dossier in your collective intelligence
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
-          <Button
-            size="sm"
-            onClick={openCreate}
-            className="w-full sm:w-auto cursor-pointer"
-          >
-            <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
-          </Button>
-          {isAdmin && (
-            <Link to="/upload" className="sm:w-auto">
-              <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload dossier
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Leads"
+        icon={FileSearch}
+        title="Leads"
+        description="Search every dossier in your collective intelligence"
+        aside={
+          <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
+            <Button
+              size="sm"
+              onClick={openCreate}
+              className="w-full sm:w-auto cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
+            </Button>
+            {isAdmin && (
+              <Link to="/upload" className="sm:w-auto">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                  <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload dossier
+                </Button>
+              </Link>
+            )}
+          </div>
+        }
+      />
       <CreateDossierModal open={createOpen} onOpenChange={setCreateOpen} />
 
       <Card className="p-3 sm:p-4">

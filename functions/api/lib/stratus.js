@@ -57,6 +57,48 @@ async function getSignedUrl(app, key) {
   }
 }
 
+// Collect whatever getObject returns (Readable stream | Buffer | string) into a
+// Buffer. Shared by getHtml above (conceptually) and the PDF cache below.
+async function streamToBuffer(obj) {
+  if (obj && typeof obj.on === "function") {
+    return await new Promise((resolve, reject) => {
+      const chunks = [];
+      obj.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+      obj.on("end", () => resolve(Buffer.concat(chunks)));
+      obj.on("error", reject);
+    });
+  }
+  if (Buffer.isBuffer(obj)) return obj;
+  if (typeof obj === "string") return Buffer.from(obj, "utf8");
+  if (obj && typeof obj.arrayBuffer === "function")
+    return Buffer.from(await obj.arrayBuffer());
+  return Buffer.from(String(obj));
+}
+
+// Fetch a binary object as a Buffer, or null if it doesn't exist / is
+// unreachable. Used to serve a cached PDF without re-rendering.
+async function getObjectBuffer(app, key) {
+  try {
+    const obj = await bucket(app).getObject(key);
+    if (obj == null) return null;
+    const buf = await streamToBuffer(obj);
+    return buf.length > 0 ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+// Store a binary object. Best-effort: never throws into the caller.
+async function putBuffer(app, key, buf, contentType) {
+  try {
+    await bucket(app).putObject(key, buf, { "Content-Type": contentType });
+    return true;
+  } catch (err) {
+    console.warn("stratus putBuffer failed (continuing):", err.message);
+    return false;
+  }
+}
+
 async function deleteObject(app, key) {
   const b = bucket(app);
   try {
@@ -66,4 +108,12 @@ async function deleteObject(app, key) {
   }
 }
 
-module.exports = { putHtml, getHtml, getSignedUrl, deleteObject, BUCKET_NAME };
+module.exports = {
+  putHtml,
+  getHtml,
+  getSignedUrl,
+  deleteObject,
+  getObjectBuffer,
+  putBuffer,
+  BUCKET_NAME,
+};

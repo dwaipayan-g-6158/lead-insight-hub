@@ -101,6 +101,27 @@ export async function getLead({ data }: { data: { id: string } }) {
   }>(`/leads/${encodeURIComponent(data.id)}`);
 }
 
+// Download the dossier as a PDF. The server renders the stored report HTML to
+// PDF via SmartBrowz (cached after the first call) and streams it back, so this
+// returns a binary Blob rather than JSON. Throws ApiError on failure.
+export async function fetchLeadPdf(id: string): Promise<Blob> {
+  const res = await fetch(`${BASE}/leads/${encodeURIComponent(id)}/pdf`, {
+    credentials: "include",
+    headers: { Accept: "application/pdf" },
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    let payload: any = null;
+    try {
+      payload = await res.json();
+      if (payload?.error || payload?.message)
+        msg = String(payload.error || payload.message);
+    } catch {}
+    throw new ApiError(msg, res.status, payload);
+  }
+  return await res.blob();
+}
+
 export async function deleteLead({ data }: { data: { id: string } }) {
   return call<{ ok: boolean }>(`/leads/${encodeURIComponent(data.id)}`, { method: "DELETE" });
 }

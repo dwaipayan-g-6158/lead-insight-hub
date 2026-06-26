@@ -21,6 +21,7 @@ import {
   History,
 } from "lucide-react";
 import { Spinner } from "@/components/Spinner";
+import { PageHeader } from "@/components/PageHeader";
 
 type Row = { name: string; status: "pending" | "ok" | "error"; message?: string; leadId?: string };
 
@@ -112,32 +113,32 @@ export function UploadPage() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {isAdmin ? "Upload dossiers" : "Create a dossier"}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isAdmin
-              ? "Drop one or many ELISS HTML reports — we parse, store, and index them."
-              : "Generate a new lead from a name, email, or LinkedIn URL."}
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
-          <Button
-            size="sm"
-            onClick={openCreate}
-            className="w-full sm:w-auto cursor-pointer"
-          >
-            <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
-          </Button>
-          <Link to="/leads" className="sm:w-auto">
-            <Button variant="outline" size="sm" className="w-full sm:w-auto">
-              <ArrowLeft className="h-3.5 w-3.5 mr-1.5" /> Back to leads
+      <PageHeader
+        eyebrow={isAdmin ? "Upload" : "Create"}
+        icon={isAdmin ? Upload : Sparkles}
+        title={isAdmin ? "Upload dossiers" : "Create a dossier"}
+        description={
+          isAdmin
+            ? "Drop one or many ELISS HTML reports — we parse, store, and index them."
+            : "Generate a new lead from a name, email, or LinkedIn URL."
+        }
+        aside={
+          <div className="flex flex-col sm:flex-row gap-2 sm:w-auto">
+            <Button
+              size="sm"
+              onClick={openCreate}
+              className="w-full sm:w-auto cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Create dossier
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link to="/leads" className="sm:w-auto">
+              <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1.5" /> Back to leads
+              </Button>
+            </Link>
+          </div>
+        }
+      />
 
       <CreateDossierModal open={createOpen} onOpenChange={setCreateOpen} />
 

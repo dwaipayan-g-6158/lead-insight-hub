@@ -492,6 +492,65 @@ html {
   100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(var(--sc, 1)) rotate(var(--rot, 180deg)); }
 }
 
+/* ---------- Dossier completion celebration ----------
+   Fired when a dossier reaches the "succeeded" state (DossierActivityPopup).
+   All three are purely decorative and collapse to nothing under
+   prefers-reduced-motion (see the reduced-motion block below). */
+
+/* Confetti overlay — fixed, full-viewport, never interactive. Sits above app
+   chrome but below Sonner toasts (which use a very high z-index) so the toast
+   stays legible on top. */
+.lih-confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9998;
+}
+.lih-confetti-piece {
+  position: absolute;
+  top: -6vh;
+  left: var(--cx, 50vw);
+  width: var(--sz, 8px);
+  height: calc(var(--sz, 8px) * 0.6);
+  background: var(--c, #a78bfa);
+  border-radius: 1px;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: lih-confetti-fall var(--dur, 2s) cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes lih-confetti-fall {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  10% { opacity: var(--o, 1); }
+  100% { opacity: 0; transform: translate(var(--dx, 0), 112vh) rotate(var(--rot, 360deg)); }
+}
+
+/* Toast success checkmark — circle draws, then the tick. */
+.lih-check-circle {
+  stroke-dasharray: 64;
+  stroke-dashoffset: 64;
+  animation: lih-check-circle 0.5s ease-out forwards;
+}
+.lih-check-mark {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: lih-check-mark 0.35s 0.35s ease-out forwards;
+}
+@keyframes lih-check-circle { to { stroke-dashoffset: 0; } }
+@keyframes lih-check-mark { to { stroke-dashoffset: 0; } }
+
+/* Activity-pill one-shot celebratory glow + gentle scale pop (emerald = done). */
+.pill-celebrate {
+  animation: pill-celebrate 1.5s ease-out;
+}
+@keyframes pill-celebrate {
+  0% { box-shadow: 0 0 0 0 oklch(0.72 0.18 150 / 0.55); }
+  30% { box-shadow: 0 0 0 7px oklch(0.72 0.18 150 / 0); transform: scale(1.06); }
+  60% { transform: scale(1); }
+  100% { box-shadow: 0 0 0 0 oklch(0.72 0.18 150 / 0); }
+}
+
 /* ---------- Dialog "fly to pill" minimize / restore ----------
    Opt-in via the shared DialogContent `flyTarget` prop (ui/dialog.tsx). Used by
    the Dossier-activity popup ("Run in background") and the reset-password dialog
@@ -566,15 +625,24 @@ html {
   .login-card-rise,
   .login-badge-glow,
   .logo-spin,
-  .logo-armed {
+  .logo-armed,
+  .pill-celebrate,
+  .lih-check-circle,
+  .lih-check-mark {
     transition: none !important;
     transform: none !important;
     opacity: 1 !important;
     animation: none !important;
   }
-  /* The pixie-dust burst is purely motion; suppress it entirely rather than
-     freezing the grains visible (the shared rule above forces opacity:1). */
-  .heavy-sparkles {
+  /* The check must still render fully drawn (not hidden) when motion is off. */
+  .lih-check-circle,
+  .lih-check-mark {
+    stroke-dashoffset: 0 !important;
+  }
+  /* The pixie-dust burst and confetti are purely motion; suppress them entirely
+     rather than freezing them visible (the shared rule above forces opacity:1). */
+  .heavy-sparkles,
+  .lih-confetti {
     display: none !important;
   }
 }

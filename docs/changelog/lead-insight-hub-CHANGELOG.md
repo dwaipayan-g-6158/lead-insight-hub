@@ -10,7 +10,16 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-24 is promoted; see [1.4.0])_
+### Added
+
+- **On-demand PDF export.** Lead dossiers now download as a single, professionally formatted **PDF** instead of raw HTML. The PDF is rendered on demand from the stored dossier HTML via Catalyst **SmartBrowz** (headless Chromium), so it is faithful to the report's existing `@media print` CSS (white background, page breaks, branding). The first render is cached to Stratus under `pdf/<leadId>.pdf` and reused on subsequent downloads (~250 ms cache hit vs ~10 s cold render). New route **`GET /leads/:id/pdf`** (auth + id validation mirroring `GET /:id`), streamed as `application/pdf` with a `Content-Disposition` attachment filename. The download button shows a spinner / "Preparing PDF…" state while rendering. Files: `functions/api/routes/leads.js`, `functions/api/lib/stratus.js` (new `getObjectBuffer`/`putBuffer`/`streamToBuffer` helpers), `app/src/lib/api.ts` (`fetchLeadPdf`), `app/src/components/LeadDetailPage.tsx`.
+- **Dossier-completion feedback.** When a dossier reaches `succeeded`, the activity popup now fires a coordinated set of completion signals so a backgrounded 2–3 min job is unmissable: a CSS **confetti** burst, an **animated drawn checkmark** in the success toast, a one-shot glow/**pulse on the activity pill**, plus two **per-user opt-in** alerts — a Web-Audio **success chime** and a **desktop/OS notification** (only when the tab is hidden) — toggled from the account menu under "Completion alerts". All motion respects `prefers-reduced-motion`; sound and notifications default **off** and persist in `localStorage`. New: `app/src/components/ConfettiBurst.tsx`, `app/src/components/AnimatedCheck.tsx`, `app/src/lib/notify.ts`. Touched: `DossierActivityPopup.tsx`, `AppShell.tsx`, `styles.css`.
+- **Consistent page headers.** A new shared **`PageHeader`** component (uppercase eyebrow + route icon + title + description + optional right-aligned `aside`) is applied across **Leads, Upload, Settings, Audit, Admin and Dashboard**, so every page header is structurally identical (previously Leads/Upload/Settings had a bare `<h1>`, Audit had an icon, and only Admin had the full eyebrow+icon treatment). New: `app/src/components/PageHeader.tsx`.
+
+### Fixed
+
+- **"Last seen" now tracked for every user.** `loadRole` (`functions/api/lib/auth.js`) previously created a `user_roles` row only for Catalyst platform admins, so users created in the console (who have no row and never went through the app signup flow) never had `last_seen_at` stamped — they showed "—" forever in User management. It now seeds a row for **any** authenticated row-less user (role taken from the platform grant — `admin` only if the platform itself grants it, otherwise `user`; no privilege escalation) and stamps `last_seen_at` on the same insert. Forward-looking: affected users populate on their next login (prior activity can't be backfilled).
+- **Settings page width alignment.** The Generation-settings page content now spans the same full container width as every other page; it was constrained to `max-w-4xl`, leaving it visibly narrower/misaligned against Leads/Audit/Admin.
 
 ---
 

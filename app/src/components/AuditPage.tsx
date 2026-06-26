@@ -8,6 +8,7 @@ import { Spinner } from "@/components/Spinner";
 import { AuditEventList, TYPE_META, FILTERS } from "@/components/AuditEventList";
 import { AuditDrilldownDialog } from "@/components/AuditDrilldownDialog";
 import { Search, X, ScrollText, Users, FileText, Activity } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import type {
   AuditEvent,
   AuditEventType,
@@ -178,24 +179,21 @@ export function AuditPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <ScrollText className="h-6 w-6 text-primary" />
-            Audit log
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Live, org-wide activity — logins, dossier creation, searches, and admin actions.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 motion-safe:animate-ping" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-          Live · refreshes every {POLL_MS / 1000}s
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Audit"
+        icon={ScrollText}
+        title="Audit log"
+        description="Live, org-wide activity — logins, dossier creation, searches, and admin actions."
+        aside={
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 motion-safe:animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            Live · refreshes every {POLL_MS / 1000}s
+          </div>
+        }
+      />
 
       {/* Screen-reader live announcement of new activity. */}
       <div aria-live="polite" className="sr-only">

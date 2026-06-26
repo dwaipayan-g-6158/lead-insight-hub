@@ -75,18 +75,27 @@ async function loadRole(req, res, next) {
     const nowStamp = catalystDateTime(new Date());
     const adminDatastore = (req.catalystAdminApp || req.catalystApp).datastore();
 
-    if (isPlatformAdmin && !row) {
-      // Self-heal: a verified platform admin with no user_roles row gets
-      // one written so subsequent calls (and the Admin UI's "Admins"
-      // count, role badges) reflect reality. Cannot privilege-escalate
-      // since the write only fires when platform role already grants admin.
-      // Seed last_seen_at on the same write — saves an immediate update.
+    if (!row) {
+      // No canonical user_roles row yet. This happens for accounts created in
+      // the Catalyst console (or before this table existed) that never went
+      // through the app signup flow. Seed a row so the user gets BOTH a role
+      // record AND last_seen tracking from now on. Previously only platform
+      // admins were seeded here, so a row-less regular user never got
+      // last_seen_at stamped (the update path below only runs when a row
+      // exists) — that's why such users showed "—" forever in the Admin view.
+      // Platform admins seed role 'admin' (bootstrap); everyone else 'user'.
+      // No privilege escalation: the role comes from the platform grant, never
+      // from user input. Seed last_seen_at on the same write.
       try {
         await adminDatastore
           .table("user_roles")
-          .insertRow({ user_id: req.userId, role: "admin", last_seen_at: nowStamp });
+          .insertRow({
+            user_id: req.userId,
+            role: isPlatformAdmin ? "admin" : "user",
+            last_seen_at: nowStamp,
+          });
       } catch (e) {
-        console.warn("loadRole self-heal insert failed:", e?.message);
+        console.warn("loadRole seed insert failed:", e?.message);
       }
     } else if (row?.ROWID) {
       // Stamp last_seen_at, throttled. Date.parse handles both ISO and

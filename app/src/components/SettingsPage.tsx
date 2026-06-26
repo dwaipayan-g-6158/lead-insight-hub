@@ -47,7 +47,9 @@ import {
   RotateCcw,
   Sparkles,
   Save,
+  SlidersHorizontal,
 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -477,43 +479,52 @@ export function SettingsPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="mx-auto max-w-4xl px-4 py-6">
+      {/* Full-width, left-aligned — matches every other page (Leads/Audit/Admin
+         all fill the AppShell <main> max-w-7xl). No mx-auto and no extra px/py
+         (the shell already supplies px-4 + py-6), so the header, action buttons
+         and content edges line up with the rest of the app. The inner sections
+         keep their own mt-* spacing, so no space-y here. */}
+      <div>
         {/* Header */}
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-semibold">Generation settings</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+        <PageHeader
+          eyebrow="Settings"
+          icon={SlidersHorizontal}
+          title="Generation settings"
+          description={
+            <>
               Global, super-admin-only controls for ELISS Light &amp; Heavy. Changes apply to the
               next dossier generation — no redeploy. Each setting shows its safe range and an honest
               recommended value; hover the{" "}
               <Info className="inline h-3.5 w-3.5 align-text-bottom" /> for details.
-            </p>
-            {meta?.updatedAt && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Last changed {meta.updatedAt}
-                {meta.updatedBy ? ` by ${meta.updatedBy}` : ""}.
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => resetAll("recommended")}>
-                  <Sparkles className="mr-1.5 h-4 w-4" /> Recommended
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Set every field to its suggested happy value</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" onClick={() => resetAll("default")}>
-                  <RotateCcw className="mr-1.5 h-4 w-4" /> Defaults
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Restore the shipped defaults (inert behavior)</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+              {meta?.updatedAt && (
+                <span className="block mt-1 text-xs text-muted-foreground">
+                  Last changed {meta.updatedAt}
+                  {meta.updatedBy ? ` by ${meta.updatedBy}` : ""}.
+                </span>
+              )}
+            </>
+          }
+          aside={
+            <div className="flex gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => resetAll("recommended")}>
+                    <Sparkles className="mr-1.5 h-4 w-4" /> Recommended
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Set every field to its suggested happy value</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => resetAll("default")}>
+                    <RotateCcw className="mr-1.5 h-4 w-4" /> Defaults
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Restore the shipped defaults (inert behavior)</TooltipContent>
+              </Tooltip>
+            </div>
+          }
+        />
 
         {/* Risk summary */}
         {warnList.length > 0 && (

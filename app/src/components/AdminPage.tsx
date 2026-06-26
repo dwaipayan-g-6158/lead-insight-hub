@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShieldCheck, ShieldOff, Trash2, RefreshCw, Users } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/Spinner";
 import { CreateUserDialog } from "./CreateUserDialog";
 import { safeDate } from "@/lib/utils";
@@ -95,25 +96,22 @@ export function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-primary">Admin</div>
-          <h1 className="text-2xl font-semibold mt-1 flex items-center gap-2">
-            <Users className="h-5 w-5" /> User management
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            All accounts that have signed up to ELISS Lead Intelligence Hub.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <CreateUserDialog
-            onCreated={(u) => setUsers((prev) => [u, ...prev])}
-          />
-          <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Admin"
+        icon={Users}
+        title="User management"
+        description="All accounts that have signed up to ELISS Lead Intelligence Hub."
+        aside={
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <CreateUserDialog
+              onCreated={(u) => setUsers((prev) => [u, ...prev])}
+            />
+            <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
+            </Button>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
         <Card className="p-3 sm:p-4">

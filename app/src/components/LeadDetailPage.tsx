@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@/lib/use-server-fn";
-import { getLead, deleteLead } from "@/lib/api";
+import { getLead, deleteLead, fetchLeadPdf } from "@/lib/api";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,9 @@ export function LeadDetailPage({ id }: { id: string }) {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // PDF download in flight — disables the button + shows a spinner while
+  // SmartBrowz renders (first download of a dossier can take a few seconds).
+  const [downloading, setDownloading] = useState(false);
   // Ref to the dossier iframe so the parent-side message listener can
   // verify that incoming open-link messages came from THIS iframe
   // (defeats spoofed messages from other tabs / extensions).
@@ -97,34 +101,29 @@ export function LeadDetailPage({ id }: { id: string }) {
     void navigate({ to: "/leads" });
   };
 
-  // Download the original dossier HTML as a file. When the backend
-  // serves via signed URL (htmlUrl), follow that. Otherwise build a
-  // Blob from the srcdoc payload. Filename uses lead-name + ID for
-  // disambiguating duplicate-email leads.
-  const onDownload = () => {
-    if (!data) return;
-    const baseName = `${(data.lead.lead_name || "dossier").replace(/[^a-zA-Z0-9._-]/g, "_")}-${id}.html`;
-    if (data.htmlUrl) {
+  // Download the dossier as a professionally formatted PDF. The server renders
+  // the stored report HTML to PDF via SmartBrowz (cached after the first call)
+  // and streams it back; we save the returned Blob. Filename uses lead-name + ID
+  // for disambiguating duplicate-email leads.
+  const onDownload = async () => {
+    if (!data || downloading) return;
+    setDownloading(true);
+    try {
+      const baseName = `${(data.lead.lead_name || "dossier").replace(/[^a-zA-Z0-9._-]/g, "_")}-${id}.pdf`;
+      const blob = await fetchLeadPdf(id);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = data.htmlUrl;
+      a.href = url;
       a.download = baseName;
-      a.rel = "noopener";
-      a.target = "_blank";
       document.body.appendChild(a);
       a.click();
       a.remove();
-      return;
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      toast.error((e as Error)?.message || "Couldn't generate the PDF — please try again");
+    } finally {
+      setDownloading(false);
     }
-    if (typeof data.html !== "string") return;
-    const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = baseName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   if (loading) return <div className="grid place-items-center py-24"><Spinner className="h-5 w-5 text-muted-foreground" /></div>;
@@ -392,11 +391,16 @@ export function LeadDetailPage({ id }: { id: string }) {
                 variant="ghost"
                 size="sm"
                 onClick={onDownload}
-                disabled={!canDownload}
-                title={canDownload ? undefined : "Original dossier HTML is no longer available"}
-                aria-label="Download original dossier HTML"
+                disabled={!canDownload || downloading}
+                title={canDownload ? undefined : "Original dossier is no longer available"}
+                aria-label="Download dossier as PDF"
               >
-            <Download className="h-4 w-4 mr-2" /> Download
+            {downloading ? (
+              <Spinner className="h-4 w-4 mr-2" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {downloading ? "Preparing PDF…" : "Download PDF"}
           </Button>
           {isAdmin && (
             <Button variant="ghost" size="sm" onClick={onDelete} aria-label={`Delete lead ${lead.lead_name}`}>
@@ -431,11 +435,16 @@ export function LeadDetailPage({ id }: { id: string }) {
                 variant="ghost"
                 size="sm"
                 onClick={onDownload}
-                disabled={!canDownload}
-                title={canDownload ? undefined : "Original dossier HTML is no longer available"}
-                aria-label="Download original dossier HTML"
+                disabled={!canDownload || downloading}
+                title={canDownload ? undefined : "Original dossier is no longer available"}
+                aria-label="Download dossier as PDF"
               >
-                <Download className="h-4 w-4 mr-2" /> Download
+                {downloading ? (
+                  <Spinner className="h-4 w-4 mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {downloading ? "Preparing PDF…" : "Download PDF"}
               </Button>
               {isAdmin && (
                 <Button variant="ghost" size="sm" onClick={onDelete} aria-label={`Delete lead ${lead.lead_name}`}>

@@ -2,7 +2,13 @@ const express = require("express");
 const multer = require("multer");
 const { requireAdmin } = require("../lib/auth");
 const { esc, selectAll, selectOne, catalystDateTime } = require("../lib/db");
-const { getSignedUrl, deleteObject } = require("../lib/stratus");
+const {
+  getSignedUrl,
+  deleteObject,
+  getHtml,
+  getObjectBuffer,
+  putBuffer,
+} = require("../lib/stratus");
 const { parseAndStoreDossier } = require("../lib/storeDossier");
 const { logEvent, logSearch, shouldLogView } = require("../lib/audit");
 
@@ -511,6 +517,97 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     console.error("get lead error:", err);
     res.status(500).json({ error: err.message || "get failed" });
+  }
+});
+
+// GET /:id/pdf — stream the dossier as a professionally formatted PDF.
+// On-demand conversion of the stored report HTML via SmartBrowz (headless
+// Chromium), which honors the report's existing @page / @media print CSS. The
+// result is cached in Stratus under `pdf/<id>.pdf` so repeat downloads skip the
+// (credit-billed) render. Any authenticated user can download any dossier,
+// matching the org-wide visibility of GET /:id.
+router.get("/:id/pdf", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!/^\d+$/.test(id)) return res.status(400).json({ error: "invalid id" });
+
+    const app = req.catalystAdminApp || req.catalystApp;
+    const zcql = app.zcql();
+
+    const lead = await selectOne(
+      zcql,
+      `SELECT ROWID, lead_name, storage_path FROM leads WHERE ROWID = ${id}`,
+      "leads",
+    );
+    if (!lead) return res.status(404).json({ error: "lead not found" });
+    if (!lead.storage_path)
+      return res.status(409).json({ error: "no source document for this dossier" });
+
+    const safeName =
+      `${String(lead.lead_name || "dossier").replace(/[^a-zA-Z0-9._-]/g, "_")}-${id}.pdf`;
+    const pdfKey = `pdf/${id}.pdf`;
+
+    const sendPdf = (buf) => {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+      res.setHeader("Content-Length", buf.length);
+      res.end(buf);
+    };
+
+    // 1. Cache hit — serve the previously rendered PDF.
+    const cached = await getObjectBuffer(app, pdfKey);
+    if (cached) return sendPdf(cached);
+
+    // 2. Fetch the source HTML.
+    const html = await getHtml(app, lead.storage_path);
+    if (typeof html !== "string" || html.length === 0)
+      return res.status(404).json({ error: "source document unavailable" });
+
+    // 3. Render to PDF via SmartBrowz. A4, print backgrounds on, comfortable
+    //    margins; the report's own print CSS drives layout / page breaks.
+    let pdfBuf;
+    try {
+      const pdfStream = await app.smartbrowz().convertToPdf(html, {
+        page_options: { javascript_enabled: true },
+        navigation_options: { wait_until: "networkidle0", timeout: 60000 },
+        // No explicit margins — the report defines its own @page print margins
+        // (SmartBrowz rejects unit-suffixed margin strings). A4 + backgrounds on.
+        pdf_options: {
+          format: "A4",
+          print_background: true,
+        },
+      });
+      pdfBuf = await new Promise((resolve, reject) => {
+        if (pdfStream && typeof pdfStream.on === "function") {
+          const chunks = [];
+          pdfStream.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          pdfStream.on("end", () => resolve(Buffer.concat(chunks)));
+          pdfStream.on("error", reject);
+        } else if (Buffer.isBuffer(pdfStream)) {
+          resolve(pdfStream);
+        } else if (pdfStream && typeof pdfStream.arrayBuffer === "function") {
+          pdfStream.arrayBuffer().then((ab) => resolve(Buffer.from(ab)), reject);
+        } else {
+          reject(new Error("unexpected SmartBrowz response"));
+        }
+      });
+    } catch (e) {
+      console.error("smartbrowz convertToPdf failed:", e?.message);
+      return res
+        .status(502)
+        .json({ error: "PDF generation is unavailable — please try again later" });
+    }
+
+    if (!pdfBuf || pdfBuf.length === 0)
+      return res.status(502).json({ error: "PDF generation returned no data" });
+
+    // 4. Cache for next time (best-effort, non-blocking) then stream.
+    putBuffer(app, pdfKey, pdfBuf, "application/pdf").catch(() => {});
+
+    return sendPdf(pdfBuf);
+  } catch (err) {
+    console.error("get lead pdf error:", err);
+    res.status(500).json({ error: err.message || "pdf failed" });
   }
 });
 

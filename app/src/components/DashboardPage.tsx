@@ -35,6 +35,7 @@ import {
   Users,
   Layers,
   PieChart as PieChartIcon,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -740,7 +741,9 @@ export function DashboardPage() {
           <div className="absolute -left-24 -bottom-24 h-48 w-48 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
           <div className="relative flex items-end justify-between gap-4 flex-wrap">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
+              <div className="text-xs uppercase tracking-[0.2em] text-primary">Overview</div>
+              <h1 className="text-3xl font-semibold tracking-tight mt-1 flex items-center gap-2">
+                <LayoutDashboard className="h-7 w-7 text-primary shrink-0" aria-hidden />
                 Enterprise Lead Intelligence
               </h1>
               <p className="text-sm text-muted-foreground mt-1.5">

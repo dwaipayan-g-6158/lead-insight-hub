@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -28,8 +29,16 @@ import {
   KeyRound,
   SlidersHorizontal,
   ScrollText,
+  Volume2,
+  Bell,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  getNotifyEnabled,
+  getSoundEnabled,
+  setSoundEnabled,
+  toggleDesktopNotifications,
+} from "@/lib/notify";
 import { ActiveRequestsPill } from "@/components/ActiveRequestsPill";
 import { MobileNavSheet } from "@/components/MobileNavSheet";
 import { DossierActivityPopup } from "@/components/DossierActivityPopup";
@@ -164,6 +173,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   // it is opened from BOTH the desktop pill dropdown and the mobile Sheet.
   const [resetOpen, setResetOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+
+  // Per-user completion-feedback prefs (localStorage; default off). Mirrored in
+  // the account menu so the user can turn the chime / desktop notifications on
+  // or off. Turning notifications on triggers the browser permission prompt.
+  const [soundOn, setSoundOn] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(false);
+  useEffect(() => {
+    setSoundOn(getSoundEnabled());
+    setNotifyOn(getNotifyEnabled());
+  }, []);
+  const onToggleSound = (v: boolean) => {
+    setSoundOn(v);
+    setSoundEnabled(v);
+  };
+  const onToggleNotify = async (v: boolean) => {
+    const ok = await toggleDesktopNotifications(v);
+    setNotifyOn(ok);
+    if (v && !ok) {
+      toast.error("Desktop notifications are blocked in your browser settings");
+    }
+  };
   const confirmReset = async () => {
     setResetBusy(true);
     try {
@@ -295,6 +325,27 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="text-sm font-medium text-foreground truncate">{display}</div>
                   <div className="text-xs text-muted-foreground truncate">{accountEmail}</div>
                 </DropdownMenuLabel>
+                <DropdownMenuLabel className="px-3 py-2 border-b font-normal text-xs uppercase tracking-wider text-muted-foreground">
+                  Completion alerts
+                </DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={soundOn}
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={onToggleSound}
+                  className="cursor-pointer py-2"
+                >
+                  <Volume2 className="h-4 w-4 mr-2" />
+                  Success sound
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={notifyOn}
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={(v) => void onToggleNotify(v)}
+                  className="cursor-pointer py-2 border-b"
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  Desktop notification
+                </DropdownMenuCheckboxItem>
                 <DropdownMenuItem
                   className="cursor-pointer px-3 py-2 rounded-none"
                   onSelect={() => setResetOpen(true)}

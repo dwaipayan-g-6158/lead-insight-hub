@@ -8,6 +8,13 @@ import {
   X,
 } from "lucide-react";
 import { Spinner } from "@/components/Spinner";
+import { AnimatedCheck } from "@/components/AnimatedCheck";
+import { ConfettiBurst } from "@/components/ConfettiBurst";
+import {
+  notifyDossierReady,
+  playSuccessChime,
+  pulseActivityPill,
+} from "@/lib/notify";
 
 import {
   Dialog,
@@ -44,6 +51,10 @@ export function DossierActivityPopup() {
 
   const [request, setRequest] = useState<DossierRequest | null>(null);
   const [retrying, setRetrying] = useState(false);
+  // Transient flag that mounts the confetti overlay on success, cleared after
+  // the burst finishes. Independent of the dialog open state so the celebration
+  // still plays when the user ran the dossier "in background".
+  const [celebrate, setCelebrate] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track the last status we toasted on so completion notifications fire
   // exactly once per request lifecycle even if the popup re-opens after.
@@ -115,9 +126,17 @@ export function DossierActivityPopup() {
     if (toastedKey.current === key) return;
     toastedKey.current = key;
     if (request.status === "succeeded" && request.lead_id) {
-      toast.success(
-        `Dossier ready: ${request.intake_name || request.intake_email || "lead"}`,
-      );
+      const name = request.intake_name || request.intake_email || "lead";
+      toast.success(`Dossier ready: ${name}`, {
+        icon: <AnimatedCheck className="text-emerald-500" />,
+      });
+      // Celebration signals: confetti + pill pulse always; sound + desktop
+      // notification only if the user opted in (see lib/notify.ts).
+      setCelebrate(false);
+      requestAnimationFrame(() => setCelebrate(true));
+      pulseActivityPill();
+      playSuccessChime();
+      notifyDossierReady(name, String(request.lead_id));
     } else if (request.status === "partial" && request.lead_id) {
       toast.warning(
         request.rr_degraded
@@ -128,6 +147,13 @@ export function DossierActivityPopup() {
       toast.error(request.error_message || "Generation failed");
     }
   }, [request?.status, request?.id, request?.lead_id]);
+
+  // Unmount the confetti overlay after the burst has finished playing.
+  useEffect(() => {
+    if (!celebrate) return;
+    const t = setTimeout(() => setCelebrate(false), 3200);
+    return () => clearTimeout(t);
+  }, [celebrate]);
 
   const handleViewDossier = () => {
     if (request?.lead_id) {
@@ -174,12 +200,14 @@ export function DossierActivityPopup() {
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) closeActivity();
-      }}
-    >
+    <>
+      {celebrate && <ConfettiBurst />}
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) closeActivity();
+        }}
+      >
       <DialogContent
         className="sm:max-w-xl"
         hideClose={!terminal}
@@ -213,8 +241,9 @@ export function DossierActivityPopup() {
           onTryAgain={handleTryAgain}
           onClose={closeActivity}
         />
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

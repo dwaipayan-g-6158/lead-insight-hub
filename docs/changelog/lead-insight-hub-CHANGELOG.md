@@ -10,6 +10,14 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
+- _(none — all development work through 2026-06-27 is promoted; see [1.5.2])_
+
+---
+
+## [1.5.2] — 2026-06-27
+
+Patch promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000296174`, Development → Production — **1 entity**: web client updated only; **zero schema/data/function changes, no auth gate**). The pre-deploy diff confirmed Serverless, Data Store, NoSQL, File Store, Stratus, Cron, Job Pool, API Gateway, Cache, and every authentication component at **Total Changes: 0**. All components completed with empty error logs.
+
 ### Added
 
 - **Home-screen / PWA icon.** "Add to Home Screen" now uses the ELISS logo. Added an opaque-tile **`apple-touch-icon.png`** (180×180, the logo on `#0a0a0e`) for the iOS home-screen, plus a **`manifest.webmanifest`** (`short_name: "ELISS"`, `display: standalone`) with 192/512 and a 512 **maskable** icon for Android/Chrome install. `app/index.html` now links the PNG apple-touch-icon (previously an SVG, which iOS ignores) and the manifest. *(app/public/{apple-touch-icon,icon-192,icon-512,icon-maskable-512}.png, app/public/manifest.webmanifest, app/index.html)*

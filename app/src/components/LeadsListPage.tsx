@@ -51,6 +51,19 @@ export function LeadsListPage() {
     setCreateOpen(true);
   };
 
+  // Whole-row click opens the dossier. The lead name stays a real <a> (below)
+  // so keyboard focus, middle-click and "open in new tab" keep working; this
+  // handler just extends the hit area to the entire row for mouse users.
+  // Bail out when the click lands on an inner link/button, on a modifier-click
+  // (new tab / new window), or while text is being selected — so none of those
+  // interactions get hijacked.
+  const openLeadRow = (l: LeadListRow) => (e: React.MouseEvent<HTMLTableRowElement>) => {
+    if ((e.target as HTMLElement).closest("a, button")) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (window.getSelection()?.toString()) return;
+    navigate({ to: "/leads/$leadId", params: { leadId: l.id } });
+  };
+
   // keep input in sync if URL changes externally
   useEffect(() => {
     setSearch(sp.q ?? "");
@@ -348,7 +361,11 @@ export function LeadsListPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((l) => (
-                  <tr key={l.id} className="hover:bg-accent/30 cursor-pointer">
+                  <tr
+                    key={l.id}
+                    onClick={openLeadRow(l)}
+                    className="hover:bg-accent/30 cursor-pointer"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Link

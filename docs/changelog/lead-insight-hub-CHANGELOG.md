@@ -10,7 +10,9 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-26 is promoted; see [1.5.0])_
+### Changed
+
+- **Whole-row click on the Leads page.** Clicking **anywhere** in a desktop leads-table row now opens that lead's dossier, not just the prospect-name link. The lead name stays a real `<a>`, so keyboard focus, middle-click and "open in new tab" still work; clicks on an inner link/button, modifier-clicks (Ctrl/Cmd/Shift/Alt), and active text selections are ignored so none of those get hijacked. The mobile card list was already fully clickable — unchanged. (`app/src/components/LeadsListPage.tsx`)
 
 ---
 

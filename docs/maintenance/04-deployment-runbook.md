@@ -101,22 +101,19 @@ You can chain multiple `--only` flags by repeating: `--only functions:api --only
 
 ### D. Promote dev → prod
 
-After dev validation passes, the prod-promoter (different person from the CR Owner — see [`01-change-request-process.md`](./01-change-request-process.md)) runs:
+> ⚠️ **There is no CLI path to Production.** `catalyst deploy` — with **any** `--org` value, including `50042142947` — only ever deploys to **Development**. Production promotion is done **exclusively** through the Catalyst **console deployment wizard**. (An earlier version of this runbook showed `catalyst deploy --org 50042142947` for prod; that was wrong — ignore it.)
 
-```powershell
-# Rebuild the client (defensive — the dev build may differ from main)
-cd app; npm run build; cd ..
+After dev validation passes, the prod-promoter (different person from the CR Owner — see [`01-change-request-process.md`](./01-change-request-process.md)) promotes via the console. The wizard clones **schema + config + function code** from Dev to Prod — **not** row data and **not** Stratus objects (prod tables stay as-is; resource IDs are preserved).
 
-catalyst deploy `
-    -p 31210000000133001 `
-    --org 50042142947 `
-    --dc in `
-    < NUL
-```
+**Click path:** Console → `lead-insight-hub` → **Settings → Environments → Deployments → Create Deployment**. A 3-step wizard:
 
-Only `--org` changes between environments. The build output and function code are identical; the env-var files in each function's `catalyst-config.json` must be the production version (separate secrets!).
+1. **Select Features** — service-level checkboxes only (Serverless / Job Scheduling / CloudScale / Settings); all-or-nothing per service. Web Client Hosting lives under **CloudScale**, so any web-client change pulls CloudScale in. Set a **commit message (≤40 chars)** and an optional **description (≤255 chars)**, keep **Development → Production**, then **Generate Diff**.
+2. **Diff Generation** — seconds to ~11 min. If the UI stays on "in progress", poll `GET /baas/v1/project/31210000000133001/migrate/<deployId>` for `migration_status: "Diff_Completed"`, then hard-reload to render the diff + **Initiate Deployment** button. **Verify Datastore / NoSQL / Stratus / Cron / auth show Total Changes: 0** before initiating; the bottom-bar "N entities" total is the authoritative change count.
+3. **Initiate Deployment** → **Yes, Proceed** → poll to `Completed` (all components should report empty `error_logs`).
 
-> **Each environment needs its own `catalyst-config.json`.** Common pattern: keep `catalyst-config.dev.json` and `catalyst-config.prod.json` alongside the example, gitignored both. Before each environment-specific deploy, copy the appropriate one to `catalyst-config.json`.
+> **Function env vars are per-environment** and are **not** carried by the migration — they must be set as **Production-scoped** console values per function. The warm `api` function needs a fresh instance to pick up changed prod env (bump `BUILD_ID` → deploy to Dev → re-run the migration).
+
+Full procedure, gotchas (stuck-`Diff_Completed` blocks new deploys → Abort first; Zoho social-login OAuth gate), and the verified prod IDs are in [`../architecture/08-catalyst-deployment.md`](../architecture/08-catalyst-deployment.md) §"Promote to production".
 
 ## Post-deploy verification
 

@@ -125,24 +125,24 @@ export function DossierActivityPopup() {
     const key = `${request.id}:${request.status}`;
     if (toastedKey.current === key) return;
     toastedKey.current = key;
-    if (request.status === "succeeded" && request.lead_id) {
+    // "partial" (dossier saved but degraded/thin) is treated as success — the
+    // lead is saved and usable — so it shows the same "Dossier ready" toast and
+    // celebration. Only two completion toasts exist: success and failure.
+    if (
+      (request.status === "succeeded" || request.status === "partial") &&
+      request.lead_id
+    ) {
       const name = request.intake_name || request.intake_email || "lead";
       toast.success(`Dossier ready: ${name}`, {
         icon: <AnimatedCheck className="text-emerald-500" />,
       });
-      // Celebration signals: confetti + pill pulse always; sound + desktop
-      // notification only if the user opted in (see lib/notify.ts).
+      // Celebration signals: confetti + pill pulse always; sound (desktop only)
+      // and desktop notification only if the user opted in (see lib/notify.ts).
       setCelebrate(false);
       requestAnimationFrame(() => setCelebrate(true));
       pulseActivityPill();
       playSuccessChime();
       notifyDossierReady(name, String(request.lead_id));
-    } else if (request.status === "partial" && request.lead_id) {
-      toast.warning(
-        request.rr_degraded
-          ? "OSINT-only dossier saved — RocketReach had no data for this org"
-          : "Dossier saved with thin sections — review before sending outreach",
-      );
     } else if (request.status === "failed") {
       toast.error(request.error_message || "Generation failed");
     }

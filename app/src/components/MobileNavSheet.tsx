@@ -20,7 +20,6 @@ import {
   LogOut,
   Menu,
   ScrollText,
-  Volume2,
   Bell,
   type LucideIcon,
 } from "lucide-react";
@@ -38,10 +37,9 @@ interface MobileNavSheetProps {
   isSuperAdmin: boolean;
   /** AppShell's route-active predicate. */
   isActive: (path: string) => boolean;
-  /** Completion-alert opt-in state (mirrors the desktop account dropdown). */
-  soundOn: boolean;
+  /** Desktop-notification opt-in state (mirrors the desktop account dropdown).
+     The success sound is desktop-browser only, so it has NO mobile toggle. */
   notifyOn: boolean;
-  onToggleSound: (on: boolean) => void;
   onToggleNotify: (on: boolean) => void | Promise<void>;
   /** Closes the sheet, then opens the shared reset Dialog. */
   onResetPassword: () => void;
@@ -65,9 +63,7 @@ export function MobileNavSheet({
   isAdmin,
   isSuperAdmin,
   isActive,
-  soundOn,
   notifyOn,
-  onToggleSound,
   onToggleNotify,
   onResetPassword,
   onSignOut,
@@ -173,41 +169,33 @@ export function MobileNavSheet({
           })}
         </nav>
 
-        {/* Completion alerts — opt-in toggles mirroring the desktop account
-           dropdown. Full-row buttons (big tap target) carrying role="switch";
-           the switch graphic is a pure-visual aria-hidden span so we never nest
-           an interactive control inside the button. Toggling does NOT close the
-           sheet. */}
+        {/* Completion alerts — only the Desktop notification toggle here. The
+           success sound is desktop-browser only (no mobile toggle). Full-row
+           button carrying role="switch"; the switch graphic is a pure-visual
+           aria-hidden span so we never nest an interactive control inside the
+           button. Toggling does NOT close the sheet. */}
         <div className="mt-1 border-t border-border/60 pt-1">
           <div className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-muted-foreground">
             Completion alerts
           </div>
-          {(
-            [
-              { on: soundOn, toggle: onToggleSound, Icon: Volume2, label: "Success sound" },
-              { on: notifyOn, toggle: onToggleNotify, Icon: Bell, label: "Desktop notification" },
-            ] as const
-          ).map(({ on, toggle, Icon, label }) => (
-            <button
-              key={label}
-              type="button"
-              role="switch"
-              aria-checked={on}
-              onClick={() => void toggle(!on)}
-              className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left text-sm text-foreground/85 transition-colors active:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          <button
+            type="button"
+            role="switch"
+            aria-checked={notifyOn}
+            onClick={() => void onToggleNotify(!notifyOn)}
+            className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left text-sm text-foreground/85 transition-colors active:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          >
+            <Bell className="h-5 w-5 text-muted-foreground" />
+            <span className="flex-1">Desktop notification</span>
+            <span
+              aria-hidden
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${notifyOn ? "bg-primary" : "bg-input"}`}
             >
-              <Icon className="h-5 w-5 text-muted-foreground" />
-              <span className="flex-1">{label}</span>
               <span
-                aria-hidden
-                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${on ? "bg-primary" : "bg-input"}`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 rounded-full bg-background shadow transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`}
-                />
-              </span>
-            </button>
-          ))}
+                className={`inline-block h-4 w-4 rounded-full bg-background shadow transition-transform ${notifyOn ? "translate-x-4" : "translate-x-0.5"}`}
+              />
+            </span>
+          </button>
         </div>
 
         {/* Account actions — divided group; Sign out destructive. */}

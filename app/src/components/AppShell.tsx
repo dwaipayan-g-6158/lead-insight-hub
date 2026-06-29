@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
+import { useIsDesktopEnv } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -179,6 +180,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // or off. Turning notifications on triggers the browser permission prompt.
   const [soundOn, setSoundOn] = useState(false);
   const [notifyOn, setNotifyOn] = useState(false);
+  // Completion-feedback toggles are desktop-browser only — hidden on mobile and
+  // inside a PWA (the effects are also runtime-guarded in lib/notify.ts).
+  const isDesktop = useIsDesktopEnv();
   useEffect(() => {
     setSoundOn(getSoundEnabled());
     setNotifyOn(getNotifyEnabled());
@@ -325,18 +329,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="text-sm font-medium text-foreground truncate">{display}</div>
                   <div className="text-xs text-muted-foreground truncate">{accountEmail}</div>
                 </DropdownMenuLabel>
+                {/* Completion alerts. The desktop notification works on every
+                   platform; the success chime is desktop-browser only (hidden on
+                   mobile and inside a standalone PWA — see lib/notify.ts). */}
                 <DropdownMenuLabel className="px-3 py-2 border-b font-normal text-xs uppercase tracking-wider text-muted-foreground">
                   Completion alerts
                 </DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={soundOn}
-                  onSelect={(e) => e.preventDefault()}
-                  onCheckedChange={onToggleSound}
-                  className="cursor-pointer py-2"
-                >
-                  <Volume2 className="h-4 w-4 mr-2" />
-                  Success sound
-                </DropdownMenuCheckboxItem>
+                {isDesktop && (
+                  <DropdownMenuCheckboxItem
+                    checked={soundOn}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={onToggleSound}
+                    className="cursor-pointer py-2"
+                  >
+                    <Volume2 className="h-4 w-4 mr-2" />
+                    Success sound
+                  </DropdownMenuCheckboxItem>
+                )}
                 <DropdownMenuCheckboxItem
                   checked={notifyOn}
                   onSelect={(e) => e.preventDefault()}
@@ -375,9 +384,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               isAdmin={isAdmin}
               isSuperAdmin={isSuperAdmin}
               isActive={isActive}
-              soundOn={soundOn}
               notifyOn={notifyOn}
-              onToggleSound={onToggleSound}
               onToggleNotify={onToggleNotify}
               onResetPassword={() => {
                 setMobileOpen(false);

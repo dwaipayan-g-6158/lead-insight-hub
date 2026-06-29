@@ -3,6 +3,8 @@
 // default OFF — sound and OS notifications are intrusive, so they are strictly
 // opt-in. All effects are best-effort and never throw into the caller.
 
+import { isDesktopEnv } from "./platform";
+
 const SOUND_KEY = "_lih_sound";
 const NOTIFY_KEY = "_lih_notify";
 
@@ -90,6 +92,8 @@ function getAudioCtx(): AudioContext | null {
  * user opted in.
  */
 export function playSuccessChime(): void {
+  // Desktop browser only — silent on mobile and inside a PWA.
+  if (!isDesktopEnv()) return;
   if (!getSoundEnabled()) return;
   const ctx = getAudioCtx();
   if (!ctx) return;

@@ -10,7 +10,24 @@ The `/eliss` skill ships its own changelog at [`ELISS-CHANGELOG.md`](./ELISS-CHA
 
 Items merged to the development branch but not yet promoted to production:
 
-- _(none — all development work through 2026-06-27 is promoted; see [1.5.2])_
+- _(none — all development work through 2026-06-29 is promoted; see [1.5.3])_
+
+---
+
+## [1.5.3] — 2026-06-29
+
+Patch promoted to Production via the Catalyst **console deployment wizard** (deploy `31210000000317080`, Development → Production — **1 entity**: web client updated only; **zero schema/data/function changes, no auth gate**). The pre-deploy diff confirmed Serverless, Data Store, NoSQL, File Store, Stratus, Cron, Job Pool, API Gateway, Cache, and every authentication component at **Total Changes: 0**. All components completed with empty error logs.
+
+Refines the dossier-completion feedback shipped in [1.5.0]/[1.5.2]: the four completion toasts collapse to two, and the success chime is pulled back to a desktop browser tab only.
+
+### Changed
+
+- **Exactly two completion toasts.** A finished dossier now emits only a **success** toast (`Dossier ready: <name>`) or a **failure** toast (`Generation failed`). A `partial` finish (dossier saved but degraded/thin — e.g. RocketReach had no data) is now **treated as success**: it shows the same "Dossier ready" toast and the full celebration (confetti + activity-pill pulse + opt-in chime/notification), because the lead is saved and usable. The two former `partial` **warning** toasts — *"OSINT-only dossier saved — RocketReach had no data for this org"* and *"Dossier saved with thin sections — review before sending outreach"* — are removed. Toasts continue to render on **every surface** (desktop browser, mobile browser, installed PWA) via the global `<Toaster>`. *(app/src/components/DossierActivityPopup.tsx)*
+- **Success sound is desktop-browser only.** The Web-Audio success chime is now **silenced on phones and inside an installed PWA** — it plays only in a desktop browser tab. This **reverses the mobile "Success sound" toggle added in [1.5.2]**; that toggle now appears only in the desktop account dropdown. The **desktop/OS notification is unchanged** — it still works on every platform under the existing opt-in + permission + tab-hidden rules, and its toggle remains in both the desktop dropdown and the mobile bottom-sheet. *(app/src/lib/notify.ts `playSuccessChime`, app/src/components/AppShell.tsx, app/src/components/MobileNavSheet.tsx)*
+
+### Added
+
+- **`app/src/lib/platform.ts`** — a single source of truth for "desktop browser" runtime detection (`isStandalonePWA()` / `isDesktopEnv()`), shared by the `notify.ts` effects and the UI, plus a reactive **`useIsDesktopEnv()`** hook (`app/src/hooks/use-mobile.tsx`) that re-evaluates on viewport-resize and display-mode change so the desktop-only toggle shows/hides correctly without a reload.
 
 ---
 
